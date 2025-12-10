@@ -41,11 +41,10 @@ try {
   await addAsistente({
     numeroCasa: '42A',
     nombrePropietario: 'Juan Pérez',
-    cedula: '1234567890',
     numeroPersonasAutorizadas: '5',
   });
 } catch (error) {
-  console.error('Error:', error.message); // "Esta cédula ya está registrada"
+  console.error('Error:', error.message);
 }
 ```
 
@@ -60,14 +59,14 @@ try {
 }
 ```
 
-### 3. `registrarVoto(cedula, puntoId, voto)`
-Registra el voto de un usuario en un punto de votación.
+### 3. `registrarVoto(puntoId, voto)`
+Registra un voto para un punto de votación (sin identificar al votante).
 
 ```tsx
 try {
-  await registrarVoto('1234567890', 'punto-1', 'si');
+  await registrarVoto('punto-1', 'si');
 } catch (error) {
-  console.error('Error:', error.message); // "Ya has votado en esta propuesta"
+  console.error('Error:', error.message);
 }
 ```
 
@@ -114,7 +113,6 @@ interface Asistente {
   id: string;
   numeroCasa: string;
   nombrePropietario: string;
-  cedula: string;
   numeroPersonasAutorizadas: string;
   fecha: string;
 }
@@ -128,7 +126,6 @@ interface CasaEscaneada {
 
 interface VotoUsuario {
   id: string;
-  cedula: string;
   puntoId: string;
   voto: 'si' | 'no' | 'ausente' | 'no_voto';
   timestamp: string;
@@ -204,7 +201,8 @@ Los datos se cargan automáticamente al iniciar la aplicación.
 ## Validaciones
 
 El Context incluye validaciones automáticas:
-- ✅ Evita cédulas duplicadas en registro
+El Context incluye validaciones automáticas:
+- ✅ Evita duplicados en el registro de asistentes
 - ✅ Verifica que el asistente esté registrado antes de escanear QR
-- ✅ Evita votos duplicados por usuario en el mismo punto
+- ✅ Evita votos duplicados registrados en el historial global para el mismo punto
 - ✅ Calcula automáticamente estado de aprobación (≥51% Sí = aprobado)

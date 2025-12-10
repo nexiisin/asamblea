@@ -18,8 +18,6 @@ export default function RootLayout() {
       <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
         <Stack screenOptions={{ headerShown: true }}>
           <Stack.Screen name="Login" options={{ title: 'Home', headerShown: false }} />
-          <Stack.Screen name="RegistrarAsistentes" options={{ title: 'Registrar asistentes' }} />
-          <Stack.Screen name="EscanearQR" options={{ title: 'Escanear QR' }} />
           <Stack.Screen name="Votacion" options={{ title: 'Votación' }} />
           <Stack.Screen name="Resultados" options={{ title: 'Resultados' }} />
           <Stack.Screen name="Historial" options={{ title: 'Historial' }} />

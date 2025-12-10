@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GraficasVotacion } from '@/components/GraficasVotacion';
 import { BarraPorcentaje } from '@/components/BarraPorcentaje';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
@@ -128,6 +129,15 @@ export default function Resultados() {
                   </Text>
                 </View>
               </View>
+
+              {/* Gráficas 3D cilíndricas */}
+              <GraficasVotacion
+                si={punto.votos.si}
+                no={punto.votos.no}
+                ausente={punto.votos.ausente}
+                no_voto={punto.votos.no_voto}
+                maxHeight={200}
+              />
 
               {/* Barra de porcentajes */}
               <BarraPorcentaje

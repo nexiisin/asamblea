@@ -7,8 +7,6 @@ import {
   ScrollView,
   Alert,
   SafeAreaView,
-  Modal,
-  TextInput,
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -30,16 +28,17 @@ interface VotacionPunto {
 interface VotoUsuario {
   puntoId: string;
   voto: 'si' | 'no' | 'ausente' | 'no_voto';
-  cedula: string;
   timestamp: string;
 }
 
-const BOTONES_VOTO = [
+type VoteKey = keyof VotacionPunto['votos'];
+
+const BOTONES_VOTO: { label: string; key: VoteKey; color: string }[] = [
   { label: 'Sí', key: 'si', color: '#00C851' },
   { label: 'No', key: 'no', color: '#ff4444' },
   { label: 'Ausente', key: 'ausente', color: '#ffbb33' },
   { label: 'No votó', key: 'no_voto', color: '#999999' },
-] as const;
+];
 
 export default function Votacion() {
   const router = useRouter();
@@ -48,8 +47,6 @@ export default function Votacion() {
 
   const [puntos, setPuntos] = useState<VotacionPunto[]>([]);
   const [puntoActual, setPuntoActual] = useState(0);
-  const [cedulaUsuario, setCedulaUsuario] = useState('');
-  const [showCedulaModal, setShowCedulaModal] = useState(true);
   const [votosUsuario, setVotosUsuario] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
 
@@ -104,29 +101,6 @@ export default function Votacion() {
     return porcentajeSi >= 51 ? 'aprobado' : 'desaprobado';
   };
 
-  const registrarCedula = async () => {
-    if (!cedulaUsuario.trim()) {
-      Alert.alert('Error', 'Debes ingresar tu cédula');
-      return;
-    }
-
-    setLoading(true);
-    try {
-      // Cargar votos del usuario
-      const votosGuardados = await AsyncStorage.getItem(`votos_${cedulaUsuario.trim()}`);
-      if (votosGuardados) {
-        const votosSet = new Set(JSON.parse(votosGuardados));
-        setVotosUsuario(votosSet);
-      }
-      setShowCedulaModal(false);
-    } catch (error) {
-      Alert.alert('Error', 'No se pudo cargar los votos');
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const registrarVoto = async (voto: 'si' | 'no' | 'ausente' | 'no_voto') => {
     const puntoId = puntos[puntoActual].punto;
 
@@ -159,14 +133,8 @@ export default function Votacion() {
       const historialVotos: VotoUsuario = {
         puntoId,
         voto,
-        cedula: cedulaUsuario,
         timestamp: new Date().toISOString(),
       };
-
-      const votosGuardados = await AsyncStorage.getItem(`votos_${cedulaUsuario}`);
-      const listaVotos: VotoUsuario[] = votosGuardados ? JSON.parse(votosGuardados) : [];
-      listaVotos.push(historialVotos);
-      await AsyncStorage.setItem(`votos_${cedulaUsuario}`, JSON.stringify(Array.from(nuevoVotoUsuario)));
 
       // Guardar en historial global
       const historialGlobal = await AsyncStorage.getItem('historialVotosGlobal');
@@ -205,34 +173,6 @@ export default function Votacion() {
 
   return (
     <SafeAreaView style={[styles.container, { backgroundColor: colors.background }]}>
-      {/* Modal para ingresar cédula */}
-      <Modal visible={showCedulaModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={[styles.modalContent, { backgroundColor: colors.background }]}>
-            <Text style={[styles.modalTitle, { color: colors.text }]}>Ingresa tu cédula</Text>
-            <TextInput
-              style={[
-                styles.cedulaInput,
-                { borderColor: colors.tint, color: colors.text },
-              ]}
-              placeholder="Ej: 1234567890"
-              placeholderTextColor={colors.icon}
-              value={cedulaUsuario}
-              onChangeText={setCedulaUsuario}
-              keyboardType="numeric"
-              editable={!loading}
-            />
-            <TouchableOpacity
-              style={[styles.modalButton, { backgroundColor: colors.tint }]}
-              onPress={registrarCedula}
-              disabled={loading}
-            >
-              <Text style={styles.modalButtonText}>Continuar</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
       {puntos.length === 0 ? (
         <View style={styles.center}>
           <Text style={[styles.emptyText, { color: colors.text }]}>
@@ -280,7 +220,7 @@ export default function Votacion() {
                     { color: btn.color },
                   ]}
                 >
-                  {puntos[puntoActual].votos[btn.key as any]}
+                  {puntos[puntoActual]?.votos[btn.key] ?? 0}
                 </Text>
               </View>
             ))}
@@ -428,42 +368,6 @@ const styles = StyleSheet.create({
     borderWidth: 2,
   },
   botonVolverText: {
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  modalContent: {
-    width: '80%',
-    borderRadius: 12,
-    padding: 20,
-    elevation: 5,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  cedulaInput: {
-    borderWidth: 1,
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    marginBottom: 16,
-    fontSize: 14,
-  },
-  modalButton: {
-    paddingVertical: 12,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  modalButtonText: {
-    color: '#fff',
     fontSize: 14,
     fontWeight: '600',
   },

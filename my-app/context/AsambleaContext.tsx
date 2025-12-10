@@ -6,7 +6,6 @@ export interface Asistente {
   id: string;
   numeroCasa: string;
   nombrePropietario: string;
-  cedula: string;
   numeroPersonasAutorizadas: string;
   fecha: string;
 }
@@ -20,7 +19,6 @@ export interface CasaEscaneada {
 
 export interface VotoUsuario {
   id: string;
-  cedula: string;
   puntoId: string;
   voto: 'si' | 'no' | 'ausente' | 'no_voto';
   timestamp: string;
@@ -52,7 +50,7 @@ export interface AsambleaContextType {
   // Métodos
   addAsistente: (asistente: Omit<Asistente, 'id' | 'fecha'>) => Promise<void>;
   confirmarQR: (numeroCasa: string, nombrePropietario: string) => Promise<void>;
-  registrarVoto: (cedula: string, puntoId: string, voto: 'si' | 'no' | 'ausente' | 'no_voto') => Promise<void>;
+  registrarVoto: (puntoId: string, voto: 'si' | 'no' | 'ausente' | 'no_voto') => Promise<void>;
   setEstadoAsamblea: (estado: EstadoAsamblea) => void;
   limpiarSesion: () => Promise<void>;
   cargarDatos: () => Promise<void>;
@@ -103,11 +101,6 @@ export const AsambleaProvider: React.FC<{ children: ReactNode }> = ({ children }
         fecha: new Date().toISOString(),
       };
 
-      // Verificar duplicados
-      if (asistentes.some((a) => a.cedula === asistenteData.cedula)) {
-        throw new Error('Esta cédula ya está registrada');
-      }
-
       const nuevosAsistentes = [...asistentes, nuevoAsistente];
       setAsistentes(nuevosAsistentes);
       await AsyncStorage.setItem('asistentes', JSON.stringify(nuevosAsistentes));
@@ -156,7 +149,6 @@ export const AsambleaProvider: React.FC<{ children: ReactNode }> = ({ children }
   };
 
   const registrarVoto = async (
-    cedula: string,
     puntoId: string,
     voto: 'si' | 'no' | 'ausente' | 'no_voto'
   ) => {
@@ -167,15 +159,9 @@ export const AsambleaProvider: React.FC<{ children: ReactNode }> = ({ children }
         throw new Error('Punto de votación no encontrado');
       }
 
-      // Verificar si ya votó en este punto
-      if (votosUsuarios.some((v) => v.cedula === cedula && v.puntoId === puntoId)) {
-        throw new Error('Ya has votado en esta propuesta');
-      }
-
-      // Registrar voto
+      // Registrar voto (sin identificar por cédula)
       const nuevoVoto: VotoUsuario = {
         id: Date.now().toString(),
-        cedula,
         puntoId,
         voto,
         timestamp: new Date().toISOString(),
@@ -195,7 +181,7 @@ export const AsambleaProvider: React.FC<{ children: ReactNode }> = ({ children }
         puntoActualizado[puntoIndex].votos.ausente +
         puntoActualizado[puntoIndex].votos.no_voto;
 
-      const porcentajeSi = (puntoActualizado[puntoIndex].votos.si / total) * 100;
+      const porcentajeSi = total === 0 ? 0 : (puntoActualizado[puntoIndex].votos.si / total) * 100;
       puntoActualizado[puntoIndex].estado =
         porcentajeSi >= 51 ? 'aprobado' : 'desaprobado';
 

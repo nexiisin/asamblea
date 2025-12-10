@@ -32,22 +32,6 @@ export default function Home() {
 
   const menuItems: MenuItem[] = [
     {
-      id: '1',
-      label: 'Registrar Asistentes',
-      description: `${asistentes.length} registrados`,
-      icon: '👥',
-      route: '/RegistrarAsistentes',
-      color: colors.tint,
-    },
-    {
-      id: '2',
-      label: 'Escanear QR',
-      description: `${casasEscaneadas.length} confirmados`,
-      icon: '📱',
-      route: '/EscanearQR',
-      color: '#00C851',
-    },
-    {
       id: '3',
       label: 'Iniciar Votación',
       description: `${puntosVotacion.length} puntos`,
