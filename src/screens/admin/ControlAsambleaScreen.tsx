@@ -197,6 +197,14 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
         </TouchableOpacity>
 
         <TouchableOpacity
+          style={[styles.boton, styles.botonCronometro]}
+          onPress={() => navigation.navigate('CronometroDebate', { asambleaId })}
+          disabled={asamblea.estado !== 'ABIERTA'}
+        >
+          <Text style={styles.botonTexto}>⏱️ Cronómetro de Debate</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
           style={[styles.boton, styles.botonResultados]}
           onPress={() => navigation.navigate('Resultados', { asambleaId })}
         >
@@ -332,6 +340,9 @@ const styles = StyleSheet.create({
   },
   botonCrear: {
     backgroundColor: '#2563eb',
+  },
+  botonCronometro: {
+    backgroundColor: '#F59E0B',
   },
   botonResultados: {
     backgroundColor: '#10b981',

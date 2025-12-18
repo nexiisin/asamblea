@@ -199,6 +199,42 @@ SELECT
 FROM propuestas p;
 
 -- =====================================================
+-- TABLA: cronometro_debate
+-- Cronómetro sincronizado en tiempo real para debates
+-- =====================================================
+CREATE TABLE IF NOT EXISTS cronometro_debate (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  asamblea_id UUID NOT NULL REFERENCES asambleas(id) ON DELETE CASCADE,
+  propuesta_id UUID REFERENCES propuestas(id) ON DELETE SET NULL,
+  duracion_segundos INTEGER NOT NULL, -- Duración total configurada
+  tiempo_transcurrido INTEGER NOT NULL DEFAULT 0, -- Segundos transcurridos
+  estado VARCHAR(20) NOT NULL DEFAULT 'DETENIDO' CHECK (estado IN ('ACTIVO', 'PAUSADO', 'DETENIDO')),
+  timestamp_inicio TIMESTAMP WITH TIME ZONE, -- Momento en que se inició
+  timestamp_pausa TIMESTAMP WITH TIME ZONE, -- Momento en que se pausó
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc', NOW()),
+  UNIQUE(asamblea_id) -- Solo un cronómetro activo por asamblea
+);
+
+-- Índices para consultas rápidas
+CREATE INDEX idx_cronometro_asamblea ON cronometro_debate(asamblea_id);
+CREATE INDEX idx_cronometro_estado ON cronometro_debate(estado);
+
+-- Trigger para actualizar updated_at automáticamente
+CREATE OR REPLACE FUNCTION update_cronometro_timestamp()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = TIMEZONE('utc', NOW());
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER cronometro_updated_at
+BEFORE UPDATE ON cronometro_debate
+FOR EACH ROW
+EXECUTE FUNCTION update_cronometro_timestamp();
+
+-- =====================================================
 -- POLÍTICAS RLS (Row Level Security)
 -- Habilitar después de configurar autenticación si es necesario
 -- =====================================================
@@ -210,6 +246,7 @@ ALTER TABLE asambleas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE asistencias ENABLE ROW LEVEL SECURITY;
 ALTER TABLE propuestas ENABLE ROW LEVEL SECURITY;
 ALTER TABLE votos ENABLE ROW LEVEL SECURITY;
+ALTER TABLE cronometro_debate ENABLE ROW LEVEL SECURITY;
 
 -- Políticas permisivas para desarrollo
 CREATE POLICY "Enable read access for all users" ON viviendas FOR SELECT USING (true);
@@ -218,23 +255,27 @@ CREATE POLICY "Enable all access for all users" ON asambleas FOR ALL USING (true
 CREATE POLICY "Enable all access for all users" ON asistencias FOR ALL USING (true);
 CREATE POLICY "Enable all access for all users" ON propuestas FOR ALL USING (true);
 CREATE POLICY "Enable all access for all users" ON votos FOR ALL USING (true);
+CREATE POLICY "Enable all access for all users" ON cronometro_debate FOR ALL USING (true);
 
 -- =====================================================
 -- DATOS DE PRUEBA (OPCIONAL)
 -- =====================================================
 
--- Insertar viviendas de ejemplo (comentar si no se desea)
+-- NOTA: Comenta estas líneas si ya tienes datos en tu base de datos
+-- Insertar viviendas de ejemplo (solo si es una base de datos nueva)
 INSERT INTO viviendas (numero_casa) VALUES
   ('101'), ('102'), ('103'), ('104'), ('105'),
   ('201'), ('202'), ('203'), ('204'), ('205'),
-  ('301'), ('302'), ('303'), ('304'), ('305');
+  ('301'), ('302'), ('303'), ('304'), ('305')
+ON CONFLICT (numero_casa) DO NOTHING;
 
--- Insertar propietarios de ejemplo
+-- Insertar propietarios de ejemplo (solo si es una base de datos nueva)
 INSERT INTO propietarios (vivienda_id, primer_nombre, primer_apellido)
 SELECT id, 
   (ARRAY['Juan', 'María', 'Carlos', 'Ana', 'Luis', 'Carmen', 'Pedro', 'Laura', 'José', 'Isabel', 'Miguel', 'Rosa', 'Antonio', 'Elena', 'Francisco'])[floor(random() * 15 + 1)],
   (ARRAY['García', 'Rodríguez', 'Martínez', 'López', 'González', 'Pérez', 'Sánchez', 'Ramírez', 'Torres', 'Flores', 'Rivera', 'Gómez', 'Díaz', 'Cruz', 'Reyes'])[floor(random() * 15 + 1)]
-FROM viviendas;
+FROM viviendas
+WHERE NOT EXISTS (SELECT 1 FROM propietarios LIMIT 1);
 
 -- =====================================================
 -- FIN DEL ESQUEMA

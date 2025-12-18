@@ -17,6 +17,7 @@ import ControlAsambleaScreen from '../screens/admin/ControlAsambleaScreen';
 import CrearPropuestaScreen from '../screens/admin/CrearPropuestaScreen';
 import ResultadosScreen from '../screens/admin/ResultadosScreen';
 import HistorialScreen from '../screens/admin/HistorialScreen';
+import CronometroDebateScreen from '../screens/admin/CronometroDebateScreen';
 
 export type RootStackParamList = {
   // Común
@@ -34,6 +35,7 @@ export type RootStackParamList = {
   CrearPropuesta: { asambleaId: string };
   Resultados: { asambleaId: string; propuestaId?: string };
   Historial: undefined;
+  CronometroDebate: { asambleaId: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -107,6 +109,11 @@ export default function AppNavigator() {
           name="Historial" 
           component={HistorialScreen} 
           options={{ title: 'Historial' }}
+        />
+        <Stack.Screen 
+          name="CronometroDebate" 
+          component={CronometroDebateScreen} 
+          options={{ title: 'Cronómetro de Debate' }}
         />
       </Stack.Navigator>
     </NavigationContainer>

@@ -4,6 +4,7 @@ import { ActivityIndicator, Alert, StyleSheet, Text, TouchableOpacity, View, Scr
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { supabase } from '../../services/supabase';
 import { Propuesta, TipoVoto } from '../../types/database.types';
+import CronometroModal from '../../components/CronometroModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Votacion'>;
 
@@ -137,6 +138,8 @@ export default function VotacionScreen({ navigation, route }: Props) {
 
   return (
     <ScrollView style={styles.container}>
+      <CronometroModal asambleaId={asambleaId} />
+      
       <View style={styles.header}>
         <Text style={styles.casa}>Casa: {numeroCasa}</Text>
       </View>

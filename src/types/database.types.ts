@@ -3,6 +3,7 @@ export type EstadoAsamblea = 'ABIERTA' | 'CERRADA';
 export type EstadoPropuesta = 'BORRADOR' | 'ABIERTA' | 'CERRADA';
 export type TipoVoto = 'SI' | 'NO';
 export type EstadoCasa = 'SI' | 'NO' | 'NO_VOTO' | 'NO_ASISTIO';
+export type EstadoCronometro = 'ACTIVO' | 'PAUSADO' | 'DETENIDO';
 
 // Tablas de la base de datos
 export interface Vivienda {
@@ -63,6 +64,19 @@ export interface Voto {
   tipo_voto: TipoVoto;
   fecha_voto: string;
   created_at: string;
+}
+
+export interface CronometroDebate {
+  id: string;
+  asamblea_id: string;
+  propuesta_id: string | null;
+  duracion_segundos: number;
+  tiempo_transcurrido: number;
+  estado: EstadoCronometro;
+  timestamp_inicio: string | null;
+  timestamp_pausa: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 // Tipos para las vistas y queries

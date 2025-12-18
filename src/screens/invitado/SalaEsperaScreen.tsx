@@ -4,6 +4,7 @@ import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { supabase } from '../../services/supabase';
 import { Propuesta } from '../../types/database.types';
+import CronometroModal from '../../components/CronometroModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SalaEspera'>;
 
@@ -88,6 +89,8 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
+      <CronometroModal asambleaId={asambleaId} />
+      
       <View style={styles.card}>
         <Text style={styles.casa}>Casa: {numeroCasa}</Text>
         
