@@ -1,9 +1,9 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View, ScrollView } from 'react-native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { supabase } from '../../services/supabase';
-import { Propuesta } from '../../types/database.types';
+import { Asamblea, Propuesta } from '../../types/database.types';
 import CronometroModal from '../../components/CronometroModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'SalaEspera'>;
@@ -11,9 +11,12 @@ type Props = NativeStackScreenProps<RootStackParamList, 'SalaEspera'>;
 export default function SalaEsperaScreen({ navigation, route }: Props) {
   const { asambleaId, asistenciaId, numeroCasa } = route.params;
   const [viviendaId, setViviendaId] = useState<string>('');
+  const [estadoActual, setEstadoActual] = useState<string>('ESPERA');
+  const [propuestaResultados, setPropuestaResultados] = useState<Propuesta | null>(null);
+  const [totalAsistentes, setTotalAsistentes] = useState<number>(0);
 
+  // Obtener vivienda_id
   useEffect(() => {
-    // Obtener vivienda_id de la asistencia
     const fetchViviendaId = async () => {
       const { data } = await supabase
         .from('asistencias')
@@ -29,107 +32,267 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
     fetchViviendaId();
   }, [asistenciaId]);
 
+  // Cargar última propuesta cerrada para mostrar resultados
+  const cargarUltimaPropuestaCerrada = async () => {
+    try {
+      const { data: propuesta, error } = await supabase
+        .from('propuestas')
+        .select('*')
+        .eq('asamblea_id', asambleaId)
+        .eq('estado', 'CERRADA')
+        .order('fecha_cierre', { ascending: false })
+        .limit(1)
+        .single();
+
+      if (error) throw error;
+
+      if (propuesta) {
+        setPropuestaResultados(propuesta);
+        
+        // Obtener total de asistentes
+        const { count } = await supabase
+          .from('asistencias')
+          .select('*', { count: 'exact', head: true })
+          .eq('asamblea_id', asambleaId);
+        
+        setTotalAsistentes(count || 0);
+      }
+    } catch (error: any) {
+      console.error('[SALA ESPERA] Error al cargar resultados:', error.message);
+    }
+  };
+
+  // 🚀 SUSCRIPCIÓN CENTRALIZADA AL ESTADO DE LA ASAMBLEA
   useEffect(() => {
     if (!viviendaId) return;
 
-    console.log('📡 Iniciando suscripción realtime para propuestas...');
-    console.log('Asamblea ID:', asambleaId);
-    console.log('Vivienda ID:', viviendaId);
-
-    // Suscripción a propuestas ABIERTAS
     const channel = supabase
-      .channel('propuestas-changes')
+      .channel('estado-asamblea')
       .on(
         'postgres_changes',
         {
           event: '*',
           schema: 'public',
-          table: 'propuestas',
-          filter: `asamblea_id=eq.${asambleaId}`,
+          table: 'asambleas',
+          filter: `id=eq.${asambleaId}`,
         },
-        async (payload) => {
-          console.log('🔔 Cambio detectado en propuestas:', payload);
-          
-          if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
-            const propuesta = payload.new as Propuesta;
+        (payload) => {
+          if (payload.eventType === 'UPDATE') {
+            const asamblea = payload.new as Asamblea;
+            setEstadoActual(asamblea.estado_actual);
             
-            console.log('Estado de la propuesta:', propuesta.estado);
-            
-            if (propuesta.estado === 'ABIERTA') {
-              console.log('✅ Propuesta ABIERTA detectada! Navegando a votación...');
+            // 🎯 NAVEGACIÓN AUTOMÁTICA SEGÚN ESTADO
+            switch(asamblea.estado_actual) {
+              case 'DEBATE':
+                // El CronometroModal se mostrará automáticamente
+                break;
               
-              // Navegar a votación
-              navigation.replace('Votacion', {
-                asambleaId,
-                asistenciaId,
-                viviendaId,
-                numeroCasa,
-              });
+              case 'VOTACION':
+                navigation.replace('Votacion', {
+                  asambleaId,
+                  asistenciaId,
+                  viviendaId,
+                  numeroCasa,
+                });
+                break;
+              
+              case 'RESULTADOS':
+                // Cargar resultados de la última propuesta cerrada
+                cargarUltimaPropuestaCerrada();
+                break;
+              
+              case 'ESPERA':
+                setPropuestaResultados(null);
+                break;
             }
           }
         }
       )
-      .subscribe((status) => {
-        console.log('📡 Estado de suscripción:', status);
-      });
+      .subscribe();
 
-    // Verificar si ya hay una propuesta abierta
-    const checkPropuestaAbierta = async () => {
-      console.log('🔍 Verificando si ya hay propuesta abierta...');
-      
+    // Verificar estado inicial
+    const checkEstadoInicial = async () => {
       const { data, error } = await supabase
-        .from('propuestas')
-        .select('*')
-        .eq('asamblea_id', asambleaId)
-        .eq('estado', 'ABIERTA')
-        .maybeSingle();
+        .from('asambleas')
+        .select('estado_actual, propuesta_activa_id, cronometro_activo')
+        .eq('id', asambleaId)
+        .single();
 
       if (error) {
-        console.error('❌ Error al verificar propuesta:', error);
+        console.error('❌ Error al verificar estado inicial:', error);
+        return;
       }
 
       if (data) {
-        console.log('✅ Ya existe propuesta abierta! Navegando...');
-        navigation.replace('Votacion', {
-          asambleaId,
-          asistenciaId,
-          viviendaId,
-          numeroCasa,
-        });
-      } else {
-        console.log('⏳ No hay propuesta abierta, esperando...');
+        setEstadoActual(data.estado_actual);
+        
+        // Si ya está en VOTACION, navegar inmediatamente
+        if (data.estado_actual === 'VOTACION' && data.propuesta_activa_id) {
+          navigation.replace('Votacion', {
+            asambleaId,
+            asistenciaId,
+            viviendaId,
+            numeroCasa,
+          });
+        } else if (data.estado_actual === 'RESULTADOS') {
+          cargarUltimaPropuestaCerrada();
+        }
       }
     };
 
-    checkPropuestaAbierta();
+    checkEstadoInicial();
 
     return () => {
-      console.log('🔌 Desuscribiendo del canal...');
       supabase.removeChannel(channel);
     };
   }, [asambleaId, asistenciaId, viviendaId, numeroCasa, navigation]);
+
+  // Mensaje dinámico según estado
+  const getMensaje = () => {
+    switch(estadoActual) {
+      case 'DEBATE':
+        return {
+          titulo: 'Debate en curso',
+          subtitulo: 'El administrador está conduciendo el debate. Por favor espere.',
+          emoji: '💬'
+        };
+      case 'VOTACION':
+        return {
+          titulo: 'Votación iniciada',
+          subtitulo: 'Redirigiendo a la pantalla de votación...',
+          emoji: '🗳️'
+        };
+      case 'RESULTADOS':
+        return {
+          titulo: 'Votación finalizada',
+          subtitulo: 'El administrador está revisando los resultados.',
+          emoji: '📊'
+        };
+      default:
+        return {
+          titulo: 'La asamblea está pronta a comenzar',
+          subtitulo: 'Por favor espere a que el administrador inicie la votación',
+          emoji: '⏳'
+        };
+    }
+  };
+
+  const mensaje = getMensaje();
 
   return (
     <View style={styles.container}>
       <CronometroModal asambleaId={asambleaId} />
       
-      <View style={styles.card}>
-        <Text style={styles.casa}>Casa: {numeroCasa}</Text>
-        
-        <View style={styles.loadingContainer}>
-          <ActivityIndicator size="large" color="#2563eb" />
-          <Text style={styles.title}>La asamblea está pronta a comenzar</Text>
-          <Text style={styles.subtitle}>
-            Por favor espere a que el administrador inicie la votación
-          </Text>
-        </View>
+      {estadoActual === 'RESULTADOS' && propuestaResultados ? (
+        // MOSTRAR RESULTADOS DIRECTAMENTE
+        <ScrollView style={styles.scrollContainer}>
+          <View style={styles.card}>
+            <Text style={styles.casa}>🏠 Casa: {numeroCasa}</Text>
+            
+            <View style={styles.resultadosHeader}>
+              <Text style={styles.resultadosTitulo}>📊 Resultados de Votación</Text>
+              <Text style={styles.propuestaTitulo}>{propuestaResultados.titulo}</Text>
+              {propuestaResultados.descripcion && (
+                <Text style={styles.propuestaDescripcion}>{propuestaResultados.descripcion}</Text>
+              )}
+            </View>
 
-        <View style={styles.infoBox}>
-          <Text style={styles.infoText}>
-            ℹ️ Recibirá la primera propuesta automáticamente cuando esté disponible
-          </Text>
+            {/* Estado de aprobación */}
+            <View style={[
+              styles.estadoContainer,
+              { backgroundColor: propuestaResultados.resultado_aprobada ? '#dcfce7' : '#fee2e2' }
+            ]}>
+              <Text style={[
+                styles.estadoTexto,
+                { color: propuestaResultados.resultado_aprobada ? '#166534' : '#991b1b' }
+              ]}>
+                {propuestaResultados.resultado_aprobada ? '✅ APROBADA' : '❌ RECHAZADA'}
+              </Text>
+            </View>
+
+            {/* Resultados con barras de progreso */}
+            <View style={styles.votosContainer}>
+              {/* Votos SI */}
+              <View style={styles.votoItem}>
+                <View style={styles.votoHeader}>
+                  <Text style={styles.votoLabel}>✅ SI</Text>
+                  <Text style={styles.votoNumero}>{propuestaResultados.votos_si} votos</Text>
+                </View>
+                <View style={styles.barraContainer}>
+                  <View 
+                    style={[
+                      styles.barraProgreso,
+                      { width: `${propuestaResultados.porcentaje_si || 0}%`, backgroundColor: '#22c55e' }
+                    ]}
+                  />
+                </View>
+                <Text style={styles.porcentaje}>{propuestaResultados.porcentaje_si?.toFixed(1) || 0}%</Text>
+              </View>
+
+              {/* Votos NO */}
+              <View style={styles.votoItem}>
+                <View style={styles.votoHeader}>
+                  <Text style={styles.votoLabel}>❌ NO</Text>
+                  <Text style={styles.votoNumero}>{propuestaResultados.votos_no} votos</Text>
+                </View>
+                <View style={styles.barraContainer}>
+                  <View 
+                    style={[
+                      styles.barraProgreso,
+                      { width: `${propuestaResultados.porcentaje_no || 0}%`, backgroundColor: '#ef4444' }
+                    ]}
+                  />
+                </View>
+                <Text style={styles.porcentaje}>{propuestaResultados.porcentaje_no?.toFixed(1) || 0}%</Text>
+              </View>
+            </View>
+
+            {/* Estadísticas */}
+            <View style={styles.estadisticasContainer}>
+              <View style={styles.estadisticaItem}>
+                <Text style={styles.estadisticaNumero}>{propuestaResultados.total_votos}</Text>
+                <Text style={styles.estadisticaLabel}>Votos Totales</Text>
+              </View>
+              <View style={styles.estadisticaItem}>
+                <Text style={styles.estadisticaNumero}>{totalAsistentes}</Text>
+                <Text style={styles.estadisticaLabel}>Asistentes</Text>
+              </View>
+            </View>
+
+            <View style={[styles.infoBox, { backgroundColor: '#f0fdf4', borderLeftColor: '#16a34a' }]}>
+              <Text style={[styles.infoText, { color: '#166534' }]}>
+                ✅ Resultados actualizados en tiempo real
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
+      ) : (
+        // SALA DE ESPERA NORMAL
+        <View style={styles.card}>
+          <Text style={styles.casa}>🏠 Casa: {numeroCasa}</Text>
+          
+          <View style={styles.loadingContainer}>
+            <Text style={styles.emoji}>{mensaje.emoji}</Text>
+            <ActivityIndicator size="large" color="#2563eb" />
+            <Text style={styles.title}>{mensaje.titulo}</Text>
+            <Text style={styles.subtitle}>
+              {mensaje.subtitulo}
+            </Text>
+          </View>
+
+          <View style={styles.infoBox}>
+            <Text style={styles.infoText}>
+              ℹ️ La navegación es automática. No necesita refrescar la pantalla.
+            </Text>
+          </View>
+          
+          <View style={[styles.infoBox, { backgroundColor: '#f0fdf4', borderLeftColor: '#16a34a' }]}>
+            <Text style={[styles.infoText, { color: '#166534' }]}>
+              📡 Sincronización en tiempo real activa
+            </Text>
+          </View>
         </View>
-      </View>
+      )}
     </View>
   );
 }
@@ -140,6 +303,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#f5f5f5',
     padding: 20,
     justifyContent: 'center',
+  },
+  scrollContainer: {
+    flex: 1,
   },
   card: {
     backgroundColor: '#fff',
@@ -162,6 +328,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: 30,
   },
+  emoji: {
+    fontSize: 48,
+    marginBottom: 10,
+  },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
@@ -182,10 +352,107 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderLeftWidth: 4,
     borderLeftColor: '#2563eb',
+    marginTop: 12,
   },
   infoText: {
     fontSize: 14,
     color: '#1e40af',
     lineHeight: 20,
+  },
+  // Estilos para resultados
+  resultadosHeader: {
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  resultadosTitulo: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1e40af',
+    marginBottom: 16,
+  },
+  propuestaTitulo: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#334155',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  propuestaDescripcion: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  estadoContainer: {
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginBottom: 24,
+    alignItems: 'center',
+  },
+  estadoTexto: {
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  votosContainer: {
+    marginBottom: 24,
+    gap: 20,
+  },
+  votoItem: {
+    marginBottom: 8,
+  },
+  votoHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  votoLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#334155',
+  },
+  votoNumero: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#1e40af',
+  },
+  barraContainer: {
+    height: 24,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 12,
+    overflow: 'hidden',
+    marginBottom: 4,
+  },
+  barraProgreso: {
+    height: '100%',
+    borderRadius: 12,
+  },
+  porcentaje: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'right',
+    fontWeight: '600',
+  },
+  estadisticasContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 16,
+    marginBottom: 16,
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  estadisticaItem: {
+    alignItems: 'center',
+  },
+  estadisticaNumero: {
+    fontSize: 32,
+    fontWeight: 'bold',
+    color: '#1e40af',
+  },
+  estadisticaLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 4,
   },
 });

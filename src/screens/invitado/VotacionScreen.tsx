@@ -15,6 +15,15 @@ export default function VotacionScreen({ navigation, route }: Props) {
   const [yaVoto, setYaVoto] = useState(false);
   const [votoActual, setVotoActual] = useState<TipoVoto | null>(null);
   const [loading, setLoading] = useState(true);
+  
+  // 📊 Estados para resultados en tiempo real
+  const [resultados, setResultados] = useState({
+    votos_si: 0,
+    votos_no: 0,
+    total_votos: 0,
+    porcentaje_si: 0,
+    porcentaje_no: 0,
+  });
 
   const cargarPropuestaActual = async () => {
     try {
@@ -35,6 +44,15 @@ export default function VotacionScreen({ navigation, route }: Props) {
       if (propuesta) {
         console.log('✅ Propuesta activa encontrada:', propuesta.titulo);
         setPropuestaActual(propuesta);
+        
+        // 📊 Cargar resultados iniciales
+        setResultados({
+          votos_si: propuesta.votos_si || 0,
+          votos_no: propuesta.votos_no || 0,
+          total_votos: propuesta.total_votos || 0,
+          porcentaje_si: propuesta.porcentaje_si || 0,
+          porcentaje_no: propuesta.porcentaje_no || 0,
+        });
 
         // Verificar si ya votó
         const { data: voto } = await supabase
@@ -72,26 +90,40 @@ export default function VotacionScreen({ navigation, route }: Props) {
   }, []);
 
   useEffect(() => {
-    console.log('📡 Iniciando suscripción de cambios en votación...');
+    if (!propuestaActual) return;
     
-    // Suscripción a cambios en propuestas
+    console.log('📡 [VOTACION] Iniciando suscripción de cambios en propuesta...');
+    
+    // 🚀 SUSCRIPCIÓN EN TIEMPO REAL A RESULTADOS
     const channel = supabase
-      .channel('votacion-changes')
+      .channel('votacion-realtime')
       .on(
         'postgres_changes',
         {
           event: 'UPDATE',
           schema: 'public',
           table: 'propuestas',
-          filter: `asamblea_id=eq.${asambleaId}`,
+          filter: `id=eq.${propuestaActual.id}`,
         },
-        async (payload) => {
-          console.log('🔔 Cambio en propuesta detectado:', payload);
+        (payload) => {
+          console.log('🔔 [VOTACION] Actualización en propuesta:', payload);
           const propuesta = payload.new as Propuesta;
           
-          if (propuesta.estado === 'CERRADA' && propuesta.id === propuestaActual?.id) {
-            console.log('🔴 Propuesta actual cerrada, regresando a sala de espera...');
-            // Propuesta actual cerrada, regresar a sala de espera
+          // 📊 Actualizar resultados en tiempo real
+          console.log('📊 Votos SI:', propuesta.votos_si, '| NO:', propuesta.votos_no);
+          console.log('📊 Porcentaje SI:', propuesta.porcentaje_si, '% | NO:', propuesta.porcentaje_no, '%');
+          
+          setResultados({
+            votos_si: propuesta.votos_si || 0,
+            votos_no: propuesta.votos_no || 0,
+            total_votos: propuesta.total_votos || 0,
+            porcentaje_si: propuesta.porcentaje_si || 0,
+            porcentaje_no: propuesta.porcentaje_no || 0,
+          });
+          
+          // Si la propuesta se cerró, regresar a sala de espera
+          if (propuesta.estado === 'CERRADA') {
+            console.log('🔴 Propuesta cerrada, regresando a sala de espera...');
             setTimeout(() => {
               navigation.replace('SalaEspera', {
                 asambleaId,
@@ -99,24 +131,18 @@ export default function VotacionScreen({ navigation, route }: Props) {
                 numeroCasa,
               });
             }, 2000);
-          } else if (propuesta.estado === 'ABIERTA') {
-            console.log('🟢 Nueva propuesta abierta:', propuesta.titulo);
-            // Nueva propuesta abierta
-            setPropuestaActual(propuesta);
-            setYaVoto(false);
-            setVotoActual(null);
           }
         }
       )
       .subscribe((status) => {
-        console.log('📡 Estado de suscripción votación:', status);
+        console.log('📡 [VOTACION] Estado de suscripción:', status);
       });
 
     return () => {
-      console.log('🔌 Desuscribiendo de cambios de votación...');
+      console.log('🔌 [VOTACION] Desuscribiendo del canal...');
       supabase.removeChannel(channel);
     };
-  }, [asambleaId, propuestaActual, navigation, asistenciaId, numeroCasa]);
+  }, [propuestaActual, asambleaId, asistenciaId, numeroCasa, navigation]);
 
   const handleVotar = async (tipoVoto: TipoVoto) => {
     if (!propuestaActual || yaVoto) return;
@@ -185,6 +211,47 @@ export default function VotacionScreen({ navigation, route }: Props) {
       <View style={styles.card}>
         <Text style={styles.propuestaTitulo}>{propuestaActual.titulo}</Text>
         <Text style={styles.propuestaDescripcion}>{propuestaActual.descripcion}</Text>
+
+        {/* 📊 RESULTADOS EN TIEMPO REAL */}
+        <View style={styles.resultadosContainer}>
+          <Text style={styles.resultadosTitulo}>📊 Resultados en tiempo real</Text>
+          
+          <View style={styles.barraContainer}>
+            <View style={styles.barraHeader}>
+              <Text style={styles.barraLabel}>✓ SI</Text>
+              <Text style={styles.barraValor}>{resultados.votos_si} votos ({resultados.porcentaje_si.toFixed(1)}%)</Text>
+            </View>
+            <View style={styles.barraBg}>
+              <View 
+                style={[
+                  styles.barraProgreso, 
+                  styles.barraSi,
+                  { width: `${resultados.porcentaje_si}%` }
+                ]} 
+              />
+            </View>
+          </View>
+
+          <View style={styles.barraContainer}>
+            <View style={styles.barraHeader}>
+              <Text style={styles.barraLabel}>✗ NO</Text>
+              <Text style={styles.barraValor}>{resultados.votos_no} votos ({resultados.porcentaje_no.toFixed(1)}%)</Text>
+            </View>
+            <View style={styles.barraBg}>
+              <View 
+                style={[
+                  styles.barraProgreso, 
+                  styles.barraNo,
+                  { width: `${resultados.porcentaje_no}%` }
+                ]} 
+              />
+            </View>
+          </View>
+
+          <Text style={styles.totalVotos}>
+            Total de votos: {resultados.total_votos}
+          </Text>
+        </View>
 
         {yaVoto ? (
           <View style={styles.votoRegistrado}>
@@ -325,5 +392,61 @@ const styles = StyleSheet.create({
     color: '#16a34a',
     textAlign: 'center',
     fontStyle: 'italic',
+  },
+  resultadosContainer: {
+    backgroundColor: '#f8fafc',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 24,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  resultadosTitulo: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#1e40af',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  barraContainer: {
+    marginBottom: 16,
+  },
+  barraHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  barraLabel: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#334155',
+  },
+  barraValor: {
+    fontSize: 14,
+    color: '#64748b',
+  },
+  barraBg: {
+    height: 24,
+    backgroundColor: '#e2e8f0',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  barraProgreso: {
+    height: '100%',
+    borderRadius: 12,
+    minWidth: 2,
+  },
+  barraSi: {
+    backgroundColor: '#10b981',
+  },
+  barraNo: {
+    backgroundColor: '#ef4444',
+  },
+  totalVotos: {
+    fontSize: 14,
+    fontWeight: 'bold',
+    color: '#475569',
+    textAlign: 'center',
+    marginTop: 8,
   },
 });

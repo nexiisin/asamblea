@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -7,11 +7,12 @@ import {
   Alert,
   ActivityIndicator,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Svg, { Circle } from 'react-native-svg';
 import { supabase } from '../../services/supabase';
-import { CronometroDebate } from '../../types/database.types';
+import { Asamblea } from '../../types/database.types';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'CronometroDebate'>;
@@ -23,85 +24,84 @@ const STROKE_WIDTH = 4;
 export default function CronometroDebateScreen({ route, navigation }: Props) {
   const { asambleaId } = route.params;
 
+  const [asamblea, setAsamblea] = useState<Asamblea | null>(null);
   const [minutos, setMinutos] = useState(5);
   const [segundos, setSegundos] = useState(0);
-  const [cronometro, setCronometro] = useState<CronometroDebate | null>(null);
   const [tiempoRestante, setTiempoRestante] = useState(0);
   const [loading, setLoading] = useState(true);
 
-  // Cargar cronómetro existente
-  const cargarCronometro = useCallback(async () => {
+  // Cargar asamblea
+  const cargarAsamblea = async () => {
     try {
       const { data, error } = await supabase
-        .from('cronometro_debate')
+        .from('asambleas')
         .select('*')
-        .eq('asamblea_id', asambleaId)
-        .maybeSingle();
+        .eq('id', asambleaId)
+        .single();
 
       if (error) throw error;
       
       if (data) {
-        setCronometro(data);
+        setAsamblea(data);
         calcularTiempoRestante(data);
       }
     } catch (error: any) {
-      console.error('Error al cargar cronómetro:', error.message);
+      console.error('Error al cargar asamblea:', error.message);
     } finally {
       setLoading(false);
     }
-  }, [asambleaId]);
+  };
 
   // Calcular tiempo restante basado en timestamp del servidor
-  const calcularTiempoRestante = (crono: CronometroDebate) => {
-    if (crono.estado === 'ACTIVO' && crono.timestamp_inicio) {
+  const calcularTiempoRestante = (asam: Asamblea) => {
+    if (asam.cronometro_activo && !asam.cronometro_pausado && asam.cronometro_inicio) {
       const ahora = Date.now();
-      const inicio = new Date(crono.timestamp_inicio).getTime();
-      const transcurrido = Math.floor((ahora - inicio) / 1000) + crono.tiempo_transcurrido;
-      const restante = Math.max(0, crono.duracion_segundos - transcurrido);
+      const inicio = new Date(asam.cronometro_inicio).getTime();
+      const transcurrido = Math.floor((ahora - inicio) / 1000);
+      const restante = Math.max(0, asam.cronometro_duracion_segundos - transcurrido);
       setTiempoRestante(restante);
-    } else if (crono.estado === 'PAUSADO') {
-      const restante = Math.max(0, crono.duracion_segundos - crono.tiempo_transcurrido);
+    } else if (asam.cronometro_pausado) {
+      const restante = Math.max(0, asam.cronometro_duracion_segundos - asam.cronometro_tiempo_pausado);
       setTiempoRestante(restante);
     } else {
-      setTiempoRestante(crono.duracion_segundos);
+      setTiempoRestante(asam.cronometro_duracion_segundos);
     }
   };
 
-  // Suscripción a cambios en tiempo real
+  // 🚀 SUSCRIPCIÓN EN TIEMPO REAL
   useEffect(() => {
-    cargarCronometro();
+    cargarAsamblea();
+
+    console.log('📡 [CRONOMETRO] Suscribiéndose a cambios de asamblea...');
 
     const subscription = supabase
-      .channel('cronometro_changes')
+      .channel('cronometro-asamblea')
       .on(
         'postgres_changes',
         {
-          event: '*',
+          event: 'UPDATE',
           schema: 'public',
-          table: 'cronometro_debate',
-          filter: `asamblea_id=eq.${asambleaId}`,
+          table: 'asambleas',
+          filter: `id=eq.${asambleaId}`,
         },
         (payload) => {
-          if (payload.eventType === 'DELETE') {
-            setCronometro(null);
-            setTiempoRestante(0);
-          } else {
-            const nuevoCrono = payload.new as CronometroDebate;
-            setCronometro(nuevoCrono);
-            calcularTiempoRestante(nuevoCrono);
-          }
+          console.log('🔔 [CRONOMETRO] Cambio detectado:', payload);
+          const nuevaAsamblea = payload.new as Asamblea;
+          setAsamblea(nuevaAsamblea);
+          calcularTiempoRestante(nuevaAsamblea);
         }
       )
       .subscribe();
 
     return () => {
-      subscription.unsubscribe();
+      console.log('🔌 [CRONOMETRO] Desuscribiendo...');
+      supabase.removeChannel(subscription);
     };
-  }, [asambleaId, cargarCronometro]);
+  }, [asambleaId]);
 
   // Actualizar cuenta regresiva cada segundo
   useEffect(() => {
-    if (!cronometro || cronometro.estado !== 'ACTIVO') return;
+    if (!asamblea || !asamblea.cronometro_activo || asamblea.cronometro_pausado) return;
 
     const interval = setInterval(() => {
       setTiempoRestante((prev) => {
@@ -113,9 +113,9 @@ export default function CronometroDebateScreen({ route, navigation }: Props) {
     }, 1000);
 
     return () => clearInterval(interval);
-  }, [cronometro]);
+  }, [asamblea]);
 
-  // Iniciar cronómetro
+  // 🟢 INICIAR CRONÓMETRO
   const iniciarCronometro = async () => {
     try {
       const duracionTotal = minutos * 60 + segundos;
@@ -125,119 +125,90 @@ export default function CronometroDebateScreen({ route, navigation }: Props) {
         return;
       }
 
-      if (cronometro) {
-        // Actualizar cronómetro existente
-        const { error } = await supabase
-          .from('cronometro_debate')
-          .update({
-            estado: 'ACTIVO',
-            timestamp_inicio: new Date().toISOString(),
-            timestamp_pausa: null,
-          })
-          .eq('id', cronometro.id);
+      console.log('🚀 Iniciando cronómetro:', duracionTotal, 'segundos');
 
-        if (error) throw error;
-      } else {
-        // Crear nuevo cronómetro
-        const { error } = await supabase
-          .from('cronometro_debate')
-          .insert({
-            asamblea_id: asambleaId,
-            duracion_segundos: duracionTotal,
-            tiempo_transcurrido: 0,
-            estado: 'ACTIVO',
-            timestamp_inicio: new Date().toISOString(),
-          });
+      const { error } = await supabase.rpc('iniciar_cronometro_debate', {
+        p_asamblea_id: asambleaId,
+        p_duracion_segundos: duracionTotal,
+      });
 
-        if (error) throw error;
-      }
+      if (error) throw error;
+
+      Alert.alert('Éxito', 'Cronómetro iniciado');
     } catch (error: any) {
+      console.error('Error al iniciar cronómetro:', error);
       Alert.alert('Error', error.message);
     }
   };
 
-  // Pausar cronómetro
+  // ⏸️ PAUSAR CRONÓMETRO
   const pausarCronometro = async () => {
-    if (!cronometro) return;
+    if (!asamblea) return;
 
     try {
-      // Calcular tiempo transcurrido hasta ahora
-      const ahora = Date.now();
-      const inicio = new Date(cronometro.timestamp_inicio!).getTime();
-      const nuevoTranscurrido = Math.floor((ahora - inicio) / 1000) + cronometro.tiempo_transcurrido;
+      console.log('⏸️ Pausando cronómetro...');
 
-      const { error } = await supabase
-        .from('cronometro_debate')
-        .update({
-          estado: 'PAUSADO',
-          tiempo_transcurrido: nuevoTranscurrido,
-          timestamp_pausa: new Date().toISOString(),
-        })
-        .eq('id', cronometro.id);
+      const { error } = await supabase.rpc('pausar_cronometro', {
+        p_asamblea_id: asambleaId,
+      });
 
       if (error) throw error;
     } catch (error: any) {
+      console.error('Error al pausar cronómetro:', error);
       Alert.alert('Error', error.message);
     }
   };
 
-  // Reanudar cronómetro
+  // ▶️ REANUDAR CRONÓMETRO
   const reanudarCronometro = async () => {
-    if (!cronometro) return;
+    if (!asamblea) return;
 
     try {
-      const { error } = await supabase
-        .from('cronometro_debate')
-        .update({
-          estado: 'ACTIVO',
-          timestamp_inicio: new Date().toISOString(),
-          timestamp_pausa: null,
-        })
-        .eq('id', cronometro.id);
+      console.log('▶️ Reanudando cronómetro...');
+
+      const { error } = await supabase.rpc('reanudar_cronometro', {
+        p_asamblea_id: asambleaId,
+      });
 
       if (error) throw error;
     } catch (error: any) {
+      console.error('Error al reanudar cronómetro:', error);
       Alert.alert('Error', error.message);
     }
   };
 
-  // Reiniciar cronómetro
-  const reiniciarCronometro = async () => {
-    if (!cronometro) return;
+  // ⏹️ DETENER CRONÓMETRO
+  const detenerCronometro = async () => {
+    if (!asamblea) return;
 
-    try {
-      const { error } = await supabase
-        .from('cronometro_debate')
-        .update({
-          estado: 'DETENIDO',
-          tiempo_transcurrido: 0,
-          timestamp_inicio: null,
-          timestamp_pausa: null,
-        })
-        .eq('id', cronometro.id);
+    Alert.alert(
+      'Detener Cronómetro',
+      '¿Estás seguro de que deseas detener el cronómetro y regresar a espera?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Detener',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              console.log('⏹️ Deteniendo cronómetro...');
 
-      if (error) throw error;
-      
-      setTiempoRestante(cronometro.duracion_segundos);
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    }
-  };
+              const { error } = await supabase.rpc('detener_cronometro', {
+                p_asamblea_id: asambleaId,
+              });
 
-  // Finalizar cronómetro
-  const finalizarCronometro = async () => {
-    if (!cronometro) return;
+              if (error) throw error;
 
-    try {
-      const { error } = await supabase
-        .from('cronometro_debate')
-        .delete()
-        .eq('id', cronometro.id);
-
-      if (error) throw error;
-    } catch (error: any) {
-      Alert.alert('Error', error.message);
-    }
+              Alert.alert('Cronómetro Detenido', 'El estado regresó a ESPERA');
+              navigation.goBack();
+            } catch (error: any) {
+              console.error('Error al detener cronómetro:', error);
+              Alert.alert('Error', error.message);
+            }
+          },
+        },
+      ]
+    );
   };
 
   // Formatear tiempo
@@ -247,26 +218,29 @@ export default function CronometroDebateScreen({ route, navigation }: Props) {
     return { mins, secs };
   };
 
-  // Componente de círculo de progreso
-  const CirculoProgreso = ({ valor, max, label, onIncrement, onDecrement, editable }: { 
+  const CirculoProgreso = ({ 
+    valor, 
+    maximo, 
+    label, 
+    size 
+  }: { 
     valor: number; 
-    max: number; 
-    label: string;
-    onIncrement?: () => void;
-    onDecrement?: () => void;
-    editable: boolean;
+    maximo: number; 
+    label: string; 
+    size: number;
   }) => {
-    const radius = (CIRCLE_SIZE - STROKE_WIDTH) / 2;
+    const radius = (size - STROKE_WIDTH) / 2;
     const circumference = 2 * Math.PI * radius;
-    const progress = (valor / max) * circumference;
-    
+    const progress = maximo > 0 ? (valor / maximo) : 0;
+    const strokeDashoffset = circumference * (1 - progress);
+
     return (
       <View style={styles.circleContainer}>
-        <Svg width={CIRCLE_SIZE} height={CIRCLE_SIZE}>
+        <Svg width={size} height={size}>
           {/* Círculo de fondo */}
           <Circle
-            cx={CIRCLE_SIZE / 2}
-            cy={CIRCLE_SIZE / 2}
+            cx={size / 2}
+            cy={size / 2}
             r={radius}
             stroke="#9AE6B4"
             strokeWidth={STROKE_WIDTH}
@@ -274,43 +248,25 @@ export default function CronometroDebateScreen({ route, navigation }: Props) {
           />
           {/* Círculo de progreso */}
           <Circle
-            cx={CIRCLE_SIZE / 2}
-            cy={CIRCLE_SIZE / 2}
+            cx={size / 2}
+            cy={size / 2}
             r={radius}
             stroke="#48BB78"
             strokeWidth={STROKE_WIDTH}
             fill="none"
-            strokeDasharray={circumference}
-            strokeDashoffset={circumference - progress}
+            strokeDasharray={`${circumference} ${circumference}`}
+            strokeDashoffset={strokeDashoffset}
             strokeLinecap="round"
-            transform={`rotate(-90 ${CIRCLE_SIZE / 2} ${CIRCLE_SIZE / 2})`}
+            rotation="-90"
+            origin={`${size / 2}, ${size / 2}`}
           />
         </Svg>
         <View style={styles.circleContent}>
-          {editable && onIncrement && (
-            <TouchableOpacity onPress={onIncrement} style={styles.incrementBtn}>
-              <Text style={styles.incrementText}>+</Text>
-            </TouchableOpacity>
-          )}
-          <Text style={styles.circleValue}>{valor.toString().padStart(2, '0')}</Text>
-          {editable && onDecrement && (
-            <TouchableOpacity onPress={onDecrement} style={styles.decrementBtn}>
-              <Text style={styles.decrementText}>-</Text>
-            </TouchableOpacity>
-          )}
+          <Text style={styles.circleValue}>{valor}</Text>
+          <Text style={styles.circleLabel}>{label}</Text>
         </View>
-        <Text style={styles.circleLabel}>{label}</Text>
       </View>
     );
-  };
-
-  const { mins, secs } = formatearTiempo(tiempoRestante);
-
-  // Obtener color según estado
-  const obtenerColor = () => {
-    if (!cronometro || cronometro.estado === 'DETENIDO') return '#6B7280';
-    if (cronometro.estado === 'ACTIVO') return '#10B981';
-    return '#F59E0B';
   };
 
   if (loading) {
@@ -321,212 +277,304 @@ export default function CronometroDebateScreen({ route, navigation }: Props) {
     );
   }
 
-  return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Cronómetro de Debate</Text>
+  if (!asamblea) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.errorText}>No se pudo cargar la asamblea</Text>
+      </View>
+    );
+  }
 
-      {/* Círculos de tiempo */}
-      <View style={styles.circlesRow}>
+  const { mins: minutosRestantes, secs: segundosRestantes } = formatearTiempo(tiempoRestante);
+  const estaActivo = asamblea.cronometro_activo && !asamblea.cronometro_pausado;
+  const estaPausado = asamblea.cronometro_pausado;
+
+  return (
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Estado actual */}
+      <View style={styles.estadoContainer}>
+        <Text style={styles.estadoLabel}>Estado:</Text>
+        <Text style={[
+          styles.estadoValor,
+          estaActivo && styles.estadoActivo,
+          estaPausado && styles.estadoPausado,
+        ]}>
+          {estaActivo ? '▶️ ACTIVO' : estaPausado ? '⏸️ PAUSADO' : '⏹️ DETENIDO'}
+        </Text>
+      </View>
+
+      {/* Círculos de progreso */}
+      <View style={styles.cronometroContainer}>
         <CirculoProgreso
-          valor={cronometro ? mins : minutos}
-          max={59}
-          label="MINUTES"
-          editable={!cronometro || cronometro.estado === 'DETENIDO'}
-          onIncrement={() => setMinutos(prev => Math.min(prev + 1, 59))}
-          onDecrement={() => setMinutos(prev => Math.max(prev - 1, 0))}
+          valor={minutosRestantes}
+          maximo={Math.floor(asamblea.cronometro_duracion_segundos / 60)}
+          label="MIN"
+          size={CIRCLE_SIZE}
         />
         <CirculoProgreso
-          valor={cronometro ? secs : segundos}
-          max={59}
-          label="SECONDS"
-          editable={!cronometro || cronometro.estado === 'DETENIDO'}
-          onIncrement={() => setSegundos(prev => Math.min(prev + 1, 59))}
-          onDecrement={() => setSegundos(prev => Math.max(prev - 1, 0))}
+          valor={segundosRestantes}
+          maximo={59}
+          label="SEG"
+          size={CIRCLE_SIZE}
         />
       </View>
 
-      {/* Estado */}
-      {cronometro && (
-        <View style={styles.estadoContainer}>
-          <View style={[
-            styles.estadoBadge,
-            cronometro.estado === 'ACTIVO' && styles.estadoActivo,
-            cronometro.estado === 'PAUSADO' && styles.estadoPausado,
-          ]}>
-            <Text style={styles.estadoText}>{cronometro.estado}</Text>
+      {/* Configuración (solo si no está activo) */}
+      {!asamblea.cronometro_activo && (
+        <View style={styles.configuracionContainer}>
+          <Text style={styles.configuracionTitulo}>Configurar Duración</Text>
+          
+          <View style={styles.tiempoControles}>
+            <View style={styles.tiempoGrupo}>
+              <Text style={styles.tiempoLabel}>Minutos</Text>
+              <View style={styles.tiempoBotones}>
+                <TouchableOpacity
+                  style={styles.botonIncremento}
+                  onPress={() => setMinutos(Math.max(0, minutos - 1))}
+                >
+                  <Text style={styles.botonIncrementoTexto}>-</Text>
+                </TouchableOpacity>
+                <Text style={styles.tiempoValor}>{minutos}</Text>
+                <TouchableOpacity
+                  style={styles.botonIncremento}
+                  onPress={() => setMinutos(minutos + 1)}
+                >
+                  <Text style={styles.botonIncrementoTexto}>+</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            <View style={styles.tiempoGrupo}>
+              <Text style={styles.tiempoLabel}>Segundos</Text>
+              <View style={styles.tiempoBotones}>
+                <TouchableOpacity
+                  style={styles.botonIncremento}
+                  onPress={() => setSegundos(Math.max(0, segundos - 15))}
+                >
+                  <Text style={styles.botonIncrementoTexto}>-15</Text>
+                </TouchableOpacity>
+                <Text style={styles.tiempoValor}>{segundos}</Text>
+                <TouchableOpacity
+                  style={styles.botonIncremento}
+                  onPress={() => setSegundos(Math.min(59, segundos + 15))}
+                >
+                  <Text style={styles.botonIncrementoTexto}>+15</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
           </View>
         </View>
       )}
 
       {/* Botones de control */}
       <View style={styles.botonesContainer}>
-        {(!cronometro || cronometro.estado === 'DETENIDO') && (
-          <TouchableOpacity style={[styles.boton, styles.botonIniciar]} onPress={iniciarCronometro}>
-            <Text style={styles.botonTexto}>Iniciar</Text>
+        {!asamblea.cronometro_activo && (
+          <TouchableOpacity
+            style={[styles.botonControl, styles.botonIniciar]}
+            onPress={iniciarCronometro}
+          >
+            <Text style={styles.botonControlTexto}>▶️ INICIAR</Text>
           </TouchableOpacity>
         )}
 
-        {cronometro && cronometro.estado === 'ACTIVO' && (
-          <TouchableOpacity style={[styles.boton, styles.botonPausar]} onPress={pausarCronometro}>
-            <Text style={styles.botonTexto}>Pausar</Text>
+        {estaActivo && (
+          <TouchableOpacity
+            style={[styles.botonControl, styles.botonPausar]}
+            onPress={pausarCronometro}
+          >
+            <Text style={styles.botonControlTexto}>⏸️ PAUSAR</Text>
           </TouchableOpacity>
         )}
 
-        {cronometro && cronometro.estado === 'PAUSADO' && (
-          <TouchableOpacity style={[styles.boton, styles.botonReanudar]} onPress={reanudarCronometro}>
-            <Text style={styles.botonTexto}>Reanudar</Text>
+        {estaPausado && (
+          <TouchableOpacity
+            style={[styles.botonControl, styles.botonReanudar]}
+            onPress={reanudarCronometro}
+          >
+            <Text style={styles.botonControlTexto}>▶️ REANUDAR</Text>
           </TouchableOpacity>
         )}
 
-        {cronometro && cronometro.estado !== 'DETENIDO' && (
-          <>
-            <TouchableOpacity style={[styles.boton, styles.botonReiniciar]} onPress={reiniciarCronometro}>
-              <Text style={styles.botonTexto}>Reiniciar</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={[styles.boton, styles.botonFinalizar]} onPress={finalizarCronometro}>
-              <Text style={styles.botonTexto}>Finalizar</Text>
-            </TouchableOpacity>
-          </>
+        {asamblea.cronometro_activo && (
+          <TouchableOpacity
+            style={[styles.botonControl, styles.botonDetener]}
+            onPress={detenerCronometro}
+          >
+            <Text style={styles.botonControlTexto}>⏹️ DETENER</Text>
+          </TouchableOpacity>
         )}
       </View>
 
-      <TouchableOpacity style={styles.botonVolver} onPress={() => navigation.goBack()}>
-        <Text style={styles.botonVolverTexto}>Volver</Text>
-      </TouchableOpacity>
-    </View>
+      {/* Información */}
+      <View style={styles.infoContainer}>
+        <Text style={styles.infoTexto}>
+          ℹ️ Los invitados ven el cronómetro en tiempo real
+        </Text>
+        <Text style={styles.infoTexto}>
+          📡 Sincronización automática por Supabase
+        </Text>
+      </View>
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#1A202C',
+    backgroundColor: '#f5f5f5',
+  },
+  content: {
     padding: 20,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#1A202C',
   },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 40,
+  errorText: {
+    fontSize: 16,
+    color: '#ef4444',
     textAlign: 'center',
-    marginTop: 20,
   },
-  circlesRow: {
+  estadoContainer: {
+    backgroundColor: '#fff',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 20,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    gap: 12,
+  },
+  estadoLabel: {
+    fontSize: 16,
+    color: '#64748b',
+    fontWeight: '600',
+  },
+  estadoValor: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#64748b',
+  },
+  estadoActivo: {
+    color: '#10b981',
+  },
+  estadoPausado: {
+    color: '#f59e0b',
+  },
+  cronometroContainer: {
     flexDirection: 'row',
     justifyContent: 'space-around',
-    alignItems: 'center',
-    marginBottom: 30,
-    paddingHorizontal: 10,
+    marginVertical: 30,
+    gap: 20,
   },
   circleContainer: {
     alignItems: 'center',
-    position: 'relative',
+    justifyContent: 'center',
   },
   circleContent: {
     position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 30,
-    justifyContent: 'center',
     alignItems: 'center',
   },
   circleValue: {
-    fontSize: 48,
+    fontSize: 32,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: '#1e40af',
   },
   circleLabel: {
-    fontSize: 10,
-    color: '#A0AEC0',
-    marginTop: 8,
-    letterSpacing: 1,
-    fontWeight: '600',
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 4,
   },
-  incrementBtn: {
-    position: 'absolute',
-    top: 10,
-    padding: 5,
+  configuracionContainer: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 12,
+    marginBottom: 20,
   },
-  incrementText: {
-    fontSize: 24,
-    color: '#48BB78',
+  configuracionTitulo: {
+    fontSize: 18,
     fontWeight: 'bold',
+    color: '#1e40af',
+    marginBottom: 16,
+    textAlign: 'center',
   },
-  decrementBtn: {
-    position: 'absolute',
-    bottom: 10,
-    padding: 5,
+  tiempoControles: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    gap: 20,
   },
-  decrementText: {
-    fontSize: 24,
-    color: '#48BB78',
-    fontWeight: 'bold',
-  },
-  estadoContainer: {
+  tiempoGrupo: {
+    flex: 1,
     alignItems: 'center',
-    marginBottom: 30,
   },
-  estadoBadge: {
-    paddingHorizontal: 20,
-    paddingVertical: 8,
-    borderRadius: 20,
-  },
-  estadoActivo: {
-    backgroundColor: '#48BB78',
-  },
-  estadoPausado: {
-    backgroundColor: '#F59E0B',
-  },
-  estadoText: {
-    color: '#FFFFFF',
+  tiempoLabel: {
     fontSize: 14,
+    color: '#64748b',
+    marginBottom: 8,
+  },
+  tiempoBotones: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  botonIncremento: {
+    backgroundColor: '#2563eb',
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  botonIncrementoTexto: {
+    color: '#fff',
+    fontSize: 16,
     fontWeight: 'bold',
-    letterSpacing: 1,
+  },
+  tiempoValor: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#1e40af',
+    width: 60,
+    textAlign: 'center',
   },
   botonesContainer: {
     gap: 12,
-    paddingHorizontal: 20,
   },
-  boton: {
+  botonControl: {
+    padding: 18,
     borderRadius: 12,
-    paddingVertical: 16,
     alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   botonIniciar: {
-    backgroundColor: '#48BB78',
+    backgroundColor: '#10b981',
   },
   botonPausar: {
-    backgroundColor: '#F59E0B',
+    backgroundColor: '#f59e0b',
   },
   botonReanudar: {
-    backgroundColor: '#48BB78',
+    backgroundColor: '#10b981',
   },
-  botonReiniciar: {
-    backgroundColor: '#3B82F6',
+  botonDetener: {
+    backgroundColor: '#ef4444',
   },
-  botonFinalizar: {
-    backgroundColor: '#EF4444',
-  },
-  botonTexto: {
+  botonControlTexto: {
+    color: '#fff',
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#FFFFFF',
   },
-  botonVolver: {
+  infoContainer: {
     marginTop: 20,
-    paddingVertical: 12,
-    alignItems: 'center',
+    gap: 8,
   },
-  botonVolverTexto: {
-    fontSize: 16,
-    color: '#A0AEC0',
-    fontWeight: '600',
+  infoTexto: {
+    fontSize: 14,
+    color: '#64748b',
+    textAlign: 'center',
   },
 });

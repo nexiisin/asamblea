@@ -151,6 +151,85 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
     );
   };
 
+  // 🚀 NUEVAS FUNCIONES PARA CONTROLAR ESTADO CENTRALIZADO
+
+  const handleIniciarDebate = () => {
+    // Navegar al cronómetro para configurar e iniciar
+    navigation.navigate('CronometroDebate', { asambleaId });
+  };
+
+  const handleDetenerCronometro = async () => {
+    const { error } = await supabase.rpc('detener_cronometro', {
+      p_asamblea_id: asambleaId,
+    });
+
+    if (!error) {
+      Alert.alert('Cronómetro Detenido', 'El debate ha finalizado');
+      cargarDatos();
+    }
+  };
+
+  const handleIniciarVotacion = async (propuestaId: string) => {
+    Alert.alert(
+      'Iniciar Votación',
+      '¿Está seguro de que desea abrir esta propuesta para votación?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Iniciar',
+          onPress: async () => {
+            const { error } = await supabase.rpc('iniciar_votacion', {
+              p_asamblea_id: asambleaId,
+              p_propuesta_id: propuestaId,
+            });
+
+            if (error) {
+              console.error('Error al iniciar votación:', error);
+              Alert.alert('Error', 'No se pudo iniciar la votación');
+            } else {
+              Alert.alert('Éxito', 'Votación iniciada. Los invitados fueron notificados.');
+              cargarDatos();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleCerrarVotacion = async () => {
+    Alert.alert(
+      'Cerrar Votación',
+      '¿Está seguro de que desea cerrar la votación actual?',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        {
+          text: 'Cerrar',
+          onPress: async () => {
+            const { error } = await supabase.rpc('cerrar_votacion', {
+              p_asamblea_id: asambleaId,
+            });
+
+            if (!error) {
+              Alert.alert('Votación Cerrada', 'Los resultados están disponibles');
+              cargarDatos();
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const handleRegresarEspera = async () => {
+    const { error } = await supabase.rpc('regresar_a_espera', {
+      p_asamblea_id: asambleaId,
+    });
+
+    if (!error) {
+      Alert.alert('Estado Reiniciado', 'La asamblea regresó a estado de espera');
+      cargarDatos();
+    }
+  };
+
   if (!asamblea) {
     return <View style={styles.container}><Text>Cargando...</Text></View>;
   }
@@ -183,8 +262,58 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
         <View style={styles.propuestaActiva}>
           <Text style={styles.propuestaActivaTitulo}>📍 Propuesta Activa</Text>
           <Text style={styles.propuestaTitulo}>{propuestaAbierta.titulo}</Text>
+          <Text style={styles.propuestaStats}>
+            ✓ SI: {propuestaAbierta.votos_si} ({propuestaAbierta.porcentaje_si?.toFixed(1)}%) | 
+            ✗ NO: {propuestaAbierta.votos_no} ({propuestaAbierta.porcentaje_no?.toFixed(1)}%)
+          </Text>
         </View>
       )}
+
+      {/* 🚀 CONTROLES DE ESTADO CENTRALIZADO */}
+      <View style={styles.estadoSection}>
+        <Text style={styles.sectionTitle}>
+          📊 Estado: {asamblea.estado_actual || 'ESPERA'}
+        </Text>
+        
+        <View style={styles.estadoControles}>
+          {/* Botones de Control de Flujo */}
+          <TouchableOpacity
+            style={[styles.botonEstado, styles.botonDebate]}
+            onPress={handleIniciarDebate}
+            disabled={asamblea.cronometro_activo}
+          >
+            <Text style={styles.botonEstadoTexto}>
+              {asamblea.cronometro_activo ? '⏱️ Debate en Curso' : '💬 Iniciar Debate'}
+            </Text>
+          </TouchableOpacity>
+
+          {asamblea.cronometro_activo && (
+            <TouchableOpacity
+              style={[styles.botonEstado, styles.botonDetener]}
+              onPress={handleDetenerCronometro}
+            >
+              <Text style={styles.botonEstadoTexto}>⏹️ Detener Cronómetro</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.botonEstado, styles.botonEspera]}
+            onPress={handleRegresarEspera}
+            disabled={asamblea.estado_actual === 'ESPERA'}
+          >
+            <Text style={styles.botonEstadoTexto}>⏸️ Regresar a Espera</Text>
+          </TouchableOpacity>
+
+          {propuestaAbierta && (
+            <TouchableOpacity
+              style={[styles.botonEstado, styles.botonCerrarVotacion]}
+              onPress={handleCerrarVotacion}
+            >
+              <Text style={styles.botonEstadoTexto}>📊 Cerrar Votación</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
 
       {/* Botones de Acción */}
       <View style={styles.accionesContainer}>
@@ -197,11 +326,10 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={[styles.boton, styles.botonCronometro]}
-          onPress={() => navigation.navigate('CronometroDebate', { asambleaId })}
-          disabled={asamblea.estado !== 'ABIERTA'}
+          style={[styles.boton, styles.botonListado]}
+          onPress={() => navigation.navigate('ListadoPropuestas', { asambleaId })}
         >
-          <Text style={styles.botonTexto}>⏱️ Cronómetro de Debate</Text>
+          <Text style={styles.botonTexto}>📋 Listado de Propuestas</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -209,6 +337,13 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
           onPress={() => navigation.navigate('Resultados', { asambleaId })}
         >
           <Text style={styles.botonTexto}>📊 Ver Resultados</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.boton, styles.botonHistorial]}
+          onPress={() => navigation.navigate('Historial')}
+        >
+          <Text style={styles.botonTexto}>📜 Historial</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -241,11 +376,28 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
                   <Text style={styles.estadoTexto}>{propuesta.estado}</Text>
                 </View>
               </View>
+              
+              {/* Descripción */}
+              <Text style={styles.propuestaDesc} numberOfLines={2}>
+                {propuesta.descripcion}
+              </Text>
+              
+              {/* Resultados si está cerrada */}
               {propuesta.estado === 'CERRADA' && (
                 <Text style={styles.resultadoTexto}>
                   {propuesta.resultado_aprobada ? '✅ APROBADA' : '❌ RECHAZADA'}
                   {' '}({propuesta.porcentaje_si?.toFixed(1)}% SI)
                 </Text>
+              )}
+              
+              {/* Botón de Iniciar Votación si está en BORRADOR */}
+              {propuesta.estado === 'BORRADOR' && (
+                <TouchableOpacity
+                  style={styles.botonIniciarVotacion}
+                  onPress={() => handleIniciarVotacion(propuesta.id)}
+                >
+                  <Text style={styles.botonIniciarTexto}>🗳️ Iniciar Votación</Text>
+                </TouchableOpacity>
               )}
             </View>
           ))
@@ -324,6 +476,41 @@ const styles = StyleSheet.create({
     color: '#92400e',
     marginBottom: 8,
   },
+  propuestaStats: {
+    fontSize: 13,
+    color: '#92400e',
+    marginTop: 4,
+  },
+  estadoSection: {
+    padding: 20,
+    paddingTop: 0,
+  },
+  estadoControles: {
+    gap: 10,
+    marginTop: 12,
+  },
+  botonEstado: {
+    padding: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  botonDebate: {
+    backgroundColor: '#f59e0b',
+  },
+  botonDetener: {
+    backgroundColor: '#ef4444',
+  },
+  botonEspera: {
+    backgroundColor: '#64748b',
+  },
+  botonCerrarVotacion: {
+    backgroundColor: '#8b5cf6',
+  },
+  botonEstadoTexto: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+  },
   accionesContainer: {
     padding: 20,
     gap: 12,
@@ -341,11 +528,17 @@ const styles = StyleSheet.create({
   botonCrear: {
     backgroundColor: '#2563eb',
   },
+  botonListado: {
+    backgroundColor: '#8b5cf6',
+  },
   botonCronometro: {
     backgroundColor: '#F59E0B',
   },
   botonResultados: {
     backgroundColor: '#10b981',
+  },
+  botonHistorial: {
+    backgroundColor: '#06b6d4',
   },
   botonCerrar: {
     backgroundColor: '#ef4444',
@@ -388,6 +581,12 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#1e40af',
   },
+  propuestaDesc: {
+    fontSize: 14,
+    color: '#64748b',
+    marginTop: 8,
+    lineHeight: 20,
+  },
   estadoBadge: {
     paddingHorizontal: 10,
     paddingVertical: 4,
@@ -411,6 +610,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 8,
     color: '#334155',
+  },
+  botonIniciarVotacion: {
+    backgroundColor: '#2563eb',
+    padding: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+    marginTop: 12,
+  },
+  botonIniciarTexto: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
   emptyState: {
     padding: 40,

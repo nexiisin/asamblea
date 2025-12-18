@@ -1,5 +1,6 @@
 // Tipos de la base de datos
 export type EstadoAsamblea = 'ABIERTA' | 'CERRADA';
+export type EstadoActualAsamblea = 'ESPERA' | 'DEBATE' | 'VOTACION' | 'RESULTADOS';
 export type EstadoPropuesta = 'BORRADOR' | 'ABIERTA' | 'CERRADA';
 export type TipoVoto = 'SI' | 'NO';
 export type EstadoCasa = 'SI' | 'NO' | 'NO_VOTO' | 'NO_ASISTIO';
@@ -24,6 +25,13 @@ export interface Asamblea {
   id: string;
   codigo_acceso: string;
   estado: EstadoAsamblea;
+  estado_actual: EstadoActualAsamblea;
+  propuesta_activa_id: string | null;
+  cronometro_activo: boolean;
+  cronometro_pausado: boolean;
+  cronometro_inicio: string | null;
+  cronometro_duracion_segundos: number;
+  cronometro_tiempo_pausado: number;
   fecha_inicio: string;
   fecha_fin: string | null;
   regla_aprobacion: number; // 0.51 por defecto
@@ -50,6 +58,7 @@ export interface Propuesta {
   votos_no: number;
   total_votos: number;
   porcentaje_si: number | null;
+  porcentaje_no: number | null;
   fecha_apertura: string | null;
   fecha_cierre: string | null;
   orden: number;
@@ -91,4 +100,26 @@ export interface EstadisticasPropuesta {
 
 export interface ResultadoPropuesta extends Propuesta {
   estadisticas: EstadisticasPropuesta;
+}
+
+// Vista de estado completo de asamblea
+export interface EstadoAsambleaCompleto {
+  asamblea_id: string;
+  codigo_acceso: string;
+  estado_asamblea: EstadoAsamblea;
+  estado_actual: EstadoActualAsamblea;
+  propuesta_activa_id: string | null;
+  cronometro_activo: boolean;
+  cronometro_inicio: string | null;
+  cronometro_duracion_segundos: number;
+  cronometro_segundos_restantes: number;
+  propuesta_id: string | null;
+  propuesta_titulo: string | null;
+  propuesta_descripcion: string | null;
+  propuesta_estado: EstadoPropuesta | null;
+  votos_si: number | null;
+  votos_no: number | null;
+  total_votos: number | null;
+  porcentaje_si: number | null;
+  total_asistentes: number;
 }

@@ -18,6 +18,7 @@ import CrearPropuestaScreen from '../screens/admin/CrearPropuestaScreen';
 import ResultadosScreen from '../screens/admin/ResultadosScreen';
 import HistorialScreen from '../screens/admin/HistorialScreen';
 import CronometroDebateScreen from '../screens/admin/CronometroDebateScreen';
+import ListadoPropuestasScreen from '../screens/admin/ListadoPropuestasScreen';
 
 export type RootStackParamList = {
   // Común
@@ -33,6 +34,7 @@ export type RootStackParamList = {
   PanelAdmin: undefined;
   ControlAsamblea: { asambleaId: string };
   CrearPropuesta: { asambleaId: string };
+  ListadoPropuestas: { asambleaId: string };
   Resultados: { asambleaId: string; propuestaId?: string };
   Historial: undefined;
   CronometroDebate: { asambleaId: string };
@@ -99,6 +101,11 @@ export default function AppNavigator() {
           name="CrearPropuesta" 
           component={CrearPropuestaScreen} 
           options={{ title: 'Nueva Propuesta' }}
+        />
+        <Stack.Screen 
+          name="ListadoPropuestas" 
+          component={ListadoPropuestasScreen} 
+          options={{ title: 'Listado de Propuestas' }}
         />
         <Stack.Screen 
           name="Resultados" 
