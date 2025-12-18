@@ -488,6 +488,18 @@ WHERE NOT EXISTS (SELECT 1 FROM public.propietarios LIMIT 1);
 -- FIN DE LA MIGRACIÓN
 -- =====================================================
 
+-- =====================================================
+-- HABILITAR REALTIME EN TODAS LAS TABLAS
+-- =====================================================
+
+ALTER PUBLICATION supabase_realtime ADD TABLE public.viviendas;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.propietarios;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.asambleas;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.asistencias;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.propuestas;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.votos;
+ALTER PUBLICATION supabase_realtime ADD TABLE public.cronometro_debate;
+
 DO $$ 
 BEGIN
   RAISE NOTICE '✅ Migración completada exitosamente';
@@ -496,5 +508,6 @@ BEGIN
   RAISE NOTICE '⚡ Triggers: 1';
   RAISE NOTICE '👁️ Vistas: 1';
   RAISE NOTICE '🔒 RLS habilitado en todas las tablas';
+  RAISE NOTICE '📡 Realtime habilitado en todas las tablas';
   RAISE NOTICE '📝 Sistema listo para usar';
 END $$;

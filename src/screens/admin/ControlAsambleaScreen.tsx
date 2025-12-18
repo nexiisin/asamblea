@@ -299,7 +299,6 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
           <TouchableOpacity
             style={[styles.botonEstado, styles.botonEspera]}
             onPress={handleRegresarEspera}
-            disabled={asamblea.estado_actual === 'ESPERA'}
           >
             <Text style={styles.botonEstadoTexto}>⏸️ Regresar a Espera</Text>
           </TouchableOpacity>

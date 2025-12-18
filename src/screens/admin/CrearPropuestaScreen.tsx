@@ -148,20 +148,12 @@ export default function CrearPropuestaScreen({ navigation, route }: Props) {
 
           <View style={styles.buttonsContainer}>
             <TouchableOpacity
-              style={[styles.button, styles.buttonBorrador]}
+              style={[styles.button, styles.buttonGuardar]}
               onPress={handleCrearBorrador}
               disabled={loading}
             >
-              <Text style={styles.buttonText}>💾 Guardar Borrador</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              style={[styles.button, styles.buttonAbrir]}
-              onPress={handleCrearYAbrir}
-              disabled={loading}
-            >
               <Text style={styles.buttonText}>
-                {loading ? '⏳ Creando...' : '🚀 Crear y Abrir Votación'}
+                {loading ? '⏳ Guardando...' : '💾 Guardar'}
               </Text>
             </TouchableOpacity>
           </View>
@@ -243,10 +235,7 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
-  buttonBorrador: {
-    backgroundColor: '#64748b',
-  },
-  buttonAbrir: {
+  buttonGuardar: {
     backgroundColor: '#10b981',
   },
   buttonText: {

@@ -1,6 +1,6 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, ScrollView } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { supabase } from '../../services/supabase';
 import { Asamblea, Propuesta } from '../../types/database.types';
@@ -14,6 +14,10 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
   const [estadoActual, setEstadoActual] = useState<string>('ESPERA');
   const [propuestaResultados, setPropuestaResultados] = useState<Propuesta | null>(null);
   const [totalAsistentes, setTotalAsistentes] = useState<number>(0);
+  const [totalCasas, setTotalCasas] = useState<number>(0);
+  const [noVoto, setNoVoto] = useState<number>(0);
+  const [noAsistio, setNoAsistio] = useState<number>(0);
+  const [refrescando, setRefrescando] = useState(false);
 
   // Obtener vivienda_id
   useEffect(() => {
@@ -49,16 +53,62 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
       if (propuesta) {
         setPropuestaResultados(propuesta);
         
+        // Obtener total de casas
+        const { count: countCasas } = await supabase
+          .from('viviendas')
+          .select('*', { count: 'exact', head: true });
+        
         // Obtener total de asistentes
-        const { count } = await supabase
+        const { count: countAsistentes } = await supabase
           .from('asistencias')
           .select('*', { count: 'exact', head: true })
           .eq('asamblea_id', asambleaId);
         
-        setTotalAsistentes(count || 0);
+        const totalCasasValue = countCasas || 0;
+        const totalAsistentesValue = countAsistentes || 0;
+        const totalVotos = (propuesta.votos_si || 0) + (propuesta.votos_no || 0);
+        
+        setTotalCasas(totalCasasValue);
+        setTotalAsistentes(totalAsistentesValue);
+        setNoVoto(totalAsistentesValue - totalVotos);
+        setNoAsistio(totalCasasValue - totalAsistentesValue);
       }
     } catch (error: any) {
       console.error('[SALA ESPERA] Error al cargar resultados:', error.message);
+    }
+  };
+
+  // 🔄 RECARGAR ESTADO MANUALMENTE
+  const recargarEstado = async () => {
+    setRefrescando(true);
+    try {
+      const { data, error } = await supabase
+        .from('asambleas')
+        .select('estado_actual, propuesta_activa_id, cronometro_activo')
+        .eq('id', asambleaId)
+        .single();
+
+      if (error) throw error;
+
+      if (data) {
+        console.log('🔄 [SALA ESPERA] Estado recargado:', data);
+        setEstadoActual(data.estado_actual);
+        
+        if (data.estado_actual === 'VOTACION' && data.propuesta_activa_id) {
+          navigation.replace('Votacion', {
+            asambleaId,
+            asistenciaId,
+            viviendaId,
+            numeroCasa,
+          });
+        } else if (data.estado_actual === 'RESULTADOS') {
+          await cargarUltimaPropuestaCerrada();
+        }
+      }
+    } catch (error: any) {
+      console.error('[SALA ESPERA] Error al recargar:', error.message);
+    } finally {
+      setRefrescando(false);
     }
   };
 
@@ -66,8 +116,9 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!viviendaId) return;
 
+    const channelName = `sala-espera-${asambleaId}-${Date.now()}`;
     const channel = supabase
-      .channel('estado-asamblea')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -79,6 +130,8 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
         (payload) => {
           if (payload.eventType === 'UPDATE') {
             const asamblea = payload.new as Asamblea;
+            console.log('🔔 [SALA ESPERA] Estado actualizado:', asamblea.estado_actual);
+            console.log('[SALA ESPERA] Cronómetro activo:', asamblea.cronometro_activo);
             setEstadoActual(asamblea.estado_actual);
             
             // 🎯 NAVEGACIÓN AUTOMÁTICA SEGÚN ESTADO
@@ -124,6 +177,11 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
       }
 
       if (data) {
+        console.log('📊 [SALA ESPERA] Estado inicial:', {
+          estado_actual: data.estado_actual,
+          cronometro_activo: data.cronometro_activo,
+          propuesta_activa_id: data.propuesta_activa_id
+        });
         setEstadoActual(data.estado_actual);
         
         // Si ya está en VOTACION, navegar inmediatamente
@@ -181,11 +239,16 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
 
   return (
     <View style={styles.container}>
-      <CronometroModal asambleaId={asambleaId} />
+      <CronometroModal asambleaId={asambleaId} key={`cronometro-${refrescando}`} />
       
       {estadoActual === 'RESULTADOS' && propuestaResultados ? (
         // MOSTRAR RESULTADOS DIRECTAMENTE
-        <ScrollView style={styles.scrollContainer}>
+        <ScrollView 
+          style={styles.scrollContainer}
+          refreshControl={
+            <RefreshControl refreshing={refrescando} onRefresh={recargarEstado} />
+          }
+        >
           <View style={styles.card}>
             <Text style={styles.casa}>🏠 Casa: {numeroCasa}</Text>
             
@@ -222,7 +285,7 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
                   <View 
                     style={[
                       styles.barraProgreso,
-                      { width: `${propuestaResultados.porcentaje_si || 0}%`, backgroundColor: '#22c55e' }
+                      { width: `${propuestaResultados.porcentaje_si || 0}%`, backgroundColor: '#10b981' }
                     ]}
                   />
                 </View>
@@ -245,6 +308,50 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
                 </View>
                 <Text style={styles.porcentaje}>{propuestaResultados.porcentaje_no?.toFixed(1) || 0}%</Text>
               </View>
+
+              {/* No Votó */}
+              <View style={styles.votoItem}>
+                <View style={styles.votoHeader}>
+                  <Text style={styles.votoLabel}>⚪ No Votó</Text>
+                  <Text style={styles.votoNumero}>{noVoto} casas</Text>
+                </View>
+                <View style={styles.barraContainer}>
+                  <View 
+                    style={[
+                      styles.barraProgreso,
+                      { 
+                        width: `${totalAsistentes > 0 ? (noVoto / totalAsistentes * 100) : 0}%`, 
+                        backgroundColor: '#94a3b8' 
+                      }
+                    ]}
+                  />
+                </View>
+                <Text style={styles.porcentaje}>
+                  {totalAsistentes > 0 ? ((noVoto / totalAsistentes) * 100).toFixed(1) : 0}%
+                </Text>
+              </View>
+
+              {/* No Asistió */}
+              <View style={styles.votoItem}>
+                <View style={styles.votoHeader}>
+                  <Text style={styles.votoLabel}>⚫ No Asistió</Text>
+                  <Text style={styles.votoNumero}>{noAsistio} casas</Text>
+                </View>
+                <View style={styles.barraContainer}>
+                  <View 
+                    style={[
+                      styles.barraProgreso,
+                      { 
+                        width: `${totalCasas > 0 ? (noAsistio / totalCasas * 100) : 0}%`, 
+                        backgroundColor: '#64748b' 
+                      }
+                    ]}
+                  />
+                </View>
+                <Text style={styles.porcentaje}>
+                  {totalCasas > 0 ? ((noAsistio / totalCasas) * 100).toFixed(1) : 0}%
+                </Text>
+              </View>
             </View>
 
             {/* Estadísticas */}
@@ -256,6 +363,10 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
               <View style={styles.estadisticaItem}>
                 <Text style={styles.estadisticaNumero}>{totalAsistentes}</Text>
                 <Text style={styles.estadisticaLabel}>Asistentes</Text>
+              </View>
+              <View style={styles.estadisticaItem}>
+                <Text style={styles.estadisticaNumero}>{totalCasas}</Text>
+                <Text style={styles.estadisticaLabel}>Total Casas</Text>
               </View>
             </View>
 
@@ -277,18 +388,6 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
             <Text style={styles.title}>{mensaje.titulo}</Text>
             <Text style={styles.subtitle}>
               {mensaje.subtitulo}
-            </Text>
-          </View>
-
-          <View style={styles.infoBox}>
-            <Text style={styles.infoText}>
-              ℹ️ La navegación es automática. No necesita refrescar la pantalla.
-            </Text>
-          </View>
-          
-          <View style={[styles.infoBox, { backgroundColor: '#f0fdf4', borderLeftColor: '#16a34a' }]}>
-            <Text style={[styles.infoText, { color: '#166534' }]}>
-              📡 Sincronización en tiempo real activa
             </Text>
           </View>
         </View>

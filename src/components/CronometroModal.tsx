@@ -13,6 +13,7 @@ import { Asamblea } from '../types/database.types';
 
 interface Props {
   asambleaId: string;
+  key?: string | number;
 }
 
 const { width } = Dimensions.get('window');
@@ -51,14 +52,22 @@ export default function CronometroModal({ asambleaId }: Props) {
 
       if (error) throw error;
 
+      console.log('[CRONOMETRO MODAL] Datos cargados:', {
+        cronometro_activo: data?.cronometro_activo,
+        cronometro_pausado: data?.cronometro_pausado,
+        cronometro_duracion: data?.cronometro_duracion_segundos
+      });
+
       if (data && data.cronometro_activo) {
         const asamData = data as Asamblea;
         setAsamblea(asamData);
         calcularTiempoRestante(asamData);
         setVisible(true);
+        console.log('✅ [CRONOMETRO MODAL] Modal visible = true');
       } else {
         setVisible(false);
         setAsamblea(null);
+        console.log('❌ [CRONOMETRO MODAL] Modal visible = false');
       }
     } catch (error: any) {
       console.error('[CRONOMETRO MODAL] Error al cargar asamblea:', error.message);
@@ -71,8 +80,9 @@ export default function CronometroModal({ asambleaId }: Props) {
 
     console.log('📡 [CRONOMETRO MODAL] Suscribiéndose a cambios de cronómetro...');
 
+    const channelName = `cronometro-${asambleaId}-${Date.now()}`;
     const subscription = supabase
-      .channel('cronometro-modal')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -84,14 +94,20 @@ export default function CronometroModal({ asambleaId }: Props) {
         (payload) => {
           console.log('🔔 [CRONOMETRO MODAL] Cambio detectado');
           const nuevaAsamblea = payload.new as Asamblea;
+          console.log('[CRONOMETRO MODAL] Nuevo estado:', {
+            cronometro_activo: nuevaAsamblea.cronometro_activo,
+            estado_actual: nuevaAsamblea.estado_actual
+          });
           
           if (nuevaAsamblea.cronometro_activo) {
             setAsamblea(nuevaAsamblea);
             calcularTiempoRestante(nuevaAsamblea);
             setVisible(true);
+            console.log('✅ [CRONOMETRO MODAL] Modal mostrado');
           } else {
             setVisible(false);
             setAsamblea(null);
+            console.log('❌ [CRONOMETRO MODAL] Modal ocultado');
           }
         }
       )

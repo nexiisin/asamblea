@@ -90,8 +90,9 @@ export default function ResultadosScreen({ navigation, route }: Props) {
     cargarPropuestas();
 
     // Suscripción a cambios en tiempo real
+    const channelName = `resultados-${asambleaId}-${Date.now()}`;
     const channel = supabase
-      .channel('resultados-realtime')
+      .channel(channelName)
       .on(
         'postgres_changes',
         {
@@ -159,6 +160,19 @@ export default function ResultadosScreen({ navigation, route }: Props) {
 
     if (!error) {
       cargarPropuestas();
+    }
+  };
+
+  const handleMostrarResultados = async () => {
+    if (!propuestaSeleccionada || propuestaSeleccionada.estado !== 'CERRADA') return;
+
+    const { error } = await supabase
+      .from('asambleas')
+      .update({ estado_actual: 'RESULTADOS' })
+      .eq('id', asambleaId);
+
+    if (error) {
+      console.error('Error al mostrar resultados:', error);
     }
   };
 
@@ -326,6 +340,14 @@ export default function ResultadosScreen({ navigation, route }: Props) {
                 onPress={handleCerrarPropuesta}
               >
                 <Text style={styles.botonTexto}>🔒 Cerrar Votación</Text>
+              </TouchableOpacity>
+            )}
+            {propuestaSeleccionada.estado === 'CERRADA' && (
+              <TouchableOpacity
+                style={[styles.boton, styles.botonMostrar]}
+                onPress={handleMostrarResultados}
+              >
+                <Text style={styles.botonTexto}>📊 Mostrar Resultados a Invitados</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -526,6 +548,9 @@ const styles = StyleSheet.create({
   },
   botonCerrar: {
     backgroundColor: '#ef4444',
+  },
+  botonMostrar: {
+    backgroundColor: '#2563eb',
   },
   botonTexto: {
     color: '#fff',
