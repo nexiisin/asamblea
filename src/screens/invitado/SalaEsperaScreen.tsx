@@ -32,6 +32,10 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
   useEffect(() => {
     if (!viviendaId) return;
 
+    console.log('📡 Iniciando suscripción realtime para propuestas...');
+    console.log('Asamblea ID:', asambleaId);
+    console.log('Vivienda ID:', viviendaId);
+
     // Suscripción a propuestas ABIERTAS
     const channel = supabase
       .channel('propuestas-changes')
@@ -44,10 +48,16 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
           filter: `asamblea_id=eq.${asambleaId}`,
         },
         async (payload) => {
+          console.log('🔔 Cambio detectado en propuestas:', payload);
+          
           if (payload.eventType === 'UPDATE' || payload.eventType === 'INSERT') {
             const propuesta = payload.new as Propuesta;
             
+            console.log('Estado de la propuesta:', propuesta.estado);
+            
             if (propuesta.estado === 'ABIERTA') {
+              console.log('✅ Propuesta ABIERTA detectada! Navegando a votación...');
+              
               // Navegar a votación
               navigation.replace('Votacion', {
                 asambleaId,
@@ -59,30 +69,42 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Estado de suscripción:', status);
+      });
 
     // Verificar si ya hay una propuesta abierta
     const checkPropuestaAbierta = async () => {
-      const { data } = await supabase
+      console.log('🔍 Verificando si ya hay propuesta abierta...');
+      
+      const { data, error } = await supabase
         .from('propuestas')
         .select('*')
         .eq('asamblea_id', asambleaId)
         .eq('estado', 'ABIERTA')
-        .single();
+        .maybeSingle();
+
+      if (error) {
+        console.error('❌ Error al verificar propuesta:', error);
+      }
 
       if (data) {
+        console.log('✅ Ya existe propuesta abierta! Navegando...');
         navigation.replace('Votacion', {
           asambleaId,
           asistenciaId,
           viviendaId,
           numeroCasa,
         });
+      } else {
+        console.log('⏳ No hay propuesta abierta, esperando...');
       }
     };
 
     checkPropuestaAbierta();
 
     return () => {
+      console.log('🔌 Desuscribiendo del canal...');
       supabase.removeChannel(channel);
     };
   }, [asambleaId, asistenciaId, viviendaId, numeroCasa, navigation]);

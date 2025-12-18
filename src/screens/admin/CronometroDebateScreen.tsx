@@ -106,7 +106,6 @@ export default function CronometroDebateScreen({ route, navigation }: Props) {
     const interval = setInterval(() => {
       setTiempoRestante((prev) => {
         if (prev <= 1) {
-          finalizarCronometro();
           return 0;
         }
         return prev - 1;
@@ -236,8 +235,6 @@ export default function CronometroDebateScreen({ route, navigation }: Props) {
         .eq('id', cronometro.id);
 
       if (error) throw error;
-      
-      Alert.alert('Finalizado', 'El tiempo de debate ha terminado');
     } catch (error: any) {
       Alert.alert('Error', error.message);
     }
@@ -271,7 +268,7 @@ export default function CronometroDebateScreen({ route, navigation }: Props) {
             cx={CIRCLE_SIZE / 2}
             cy={CIRCLE_SIZE / 2}
             r={radius}
-            stroke="#2D3748"
+            stroke="#9AE6B4"
             strokeWidth={STROKE_WIDTH}
             fill="none"
           />

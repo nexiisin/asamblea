@@ -137,7 +137,7 @@ export default function CronometroModal({ asambleaId }: Props) {
             cx={CIRCLE_SIZE / 2}
             cy={CIRCLE_SIZE / 2}
             r={radius}
-            stroke="#2D3748"
+            stroke="#9AE6B4"
             strokeWidth={STROKE_WIDTH}
             fill="none"
           />

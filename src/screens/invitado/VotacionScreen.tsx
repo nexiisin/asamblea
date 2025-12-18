@@ -18,15 +18,22 @@ export default function VotacionScreen({ navigation, route }: Props) {
 
   const cargarPropuestaActual = async () => {
     try {
+      console.log('🔍 Cargando propuesta actual para votación...');
+      
       // Buscar propuesta ABIERTA
-      const { data: propuesta } = await supabase
+      const { data: propuesta, error } = await supabase
         .from('propuestas')
         .select('*')
         .eq('asamblea_id', asambleaId)
         .eq('estado', 'ABIERTA')
-        .single();
+        .maybeSingle();
+
+      if (error) {
+        console.error('❌ Error al cargar propuesta:', error);
+      }
 
       if (propuesta) {
+        console.log('✅ Propuesta activa encontrada:', propuesta.titulo);
         setPropuestaActual(propuesta);
 
         // Verificar si ya votó
@@ -35,12 +42,23 @@ export default function VotacionScreen({ navigation, route }: Props) {
           .select('tipo_voto')
           .eq('propuesta_id', propuesta.id)
           .eq('vivienda_id', viviendaId)
-          .single();
+          .maybeSingle();
 
         if (voto) {
+          console.log('✅ Usuario ya votó:', voto.tipo_voto);
           setYaVoto(true);
           setVotoActual(voto.tipo_voto);
+        } else {
+          console.log('⏳ Usuario no ha votado aún');
         }
+      } else {
+        console.log('⚠️ No hay propuesta abierta, regresando a sala de espera...');
+        // No hay propuesta abierta, regresar a sala de espera
+        navigation.replace('SalaEspera', {
+          asambleaId,
+          asistenciaId,
+          numeroCasa,
+        });
       }
     } catch (error) {
       console.error('Error al cargar propuesta:', error);
@@ -54,6 +72,8 @@ export default function VotacionScreen({ navigation, route }: Props) {
   }, []);
 
   useEffect(() => {
+    console.log('📡 Iniciando suscripción de cambios en votación...');
+    
     // Suscripción a cambios en propuestas
     const channel = supabase
       .channel('votacion-changes')
@@ -66,14 +86,21 @@ export default function VotacionScreen({ navigation, route }: Props) {
           filter: `asamblea_id=eq.${asambleaId}`,
         },
         async (payload) => {
+          console.log('🔔 Cambio en propuesta detectado:', payload);
           const propuesta = payload.new as Propuesta;
           
           if (propuesta.estado === 'CERRADA' && propuesta.id === propuestaActual?.id) {
-            // Propuesta actual cerrada, buscar siguiente
+            console.log('🔴 Propuesta actual cerrada, regresando a sala de espera...');
+            // Propuesta actual cerrada, regresar a sala de espera
             setTimeout(() => {
-              cargarPropuestaActual();
+              navigation.replace('SalaEspera', {
+                asambleaId,
+                asistenciaId,
+                numeroCasa,
+              });
             }, 2000);
           } else if (propuesta.estado === 'ABIERTA') {
+            console.log('🟢 Nueva propuesta abierta:', propuesta.titulo);
             // Nueva propuesta abierta
             setPropuestaActual(propuesta);
             setYaVoto(false);
@@ -81,12 +108,15 @@ export default function VotacionScreen({ navigation, route }: Props) {
           }
         }
       )
-      .subscribe();
+      .subscribe((status) => {
+        console.log('📡 Estado de suscripción votación:', status);
+      });
 
     return () => {
+      console.log('🔌 Desuscribiendo de cambios de votación...');
       supabase.removeChannel(channel);
     };
-  }, [asambleaId, propuestaActual]);
+  }, [asambleaId, propuestaActual, navigation, asistenciaId, numeroCasa]);
 
   const handleVotar = async (tipoVoto: TipoVoto) => {
     if (!propuestaActual || yaVoto) return;
@@ -124,13 +154,21 @@ export default function VotacionScreen({ navigation, route }: Props) {
   }
 
   if (!propuestaActual) {
+    // Redirigir automáticamente a sala de espera
+    console.log('⚠️ No hay propuesta actual, redirigiendo...');
+    setTimeout(() => {
+      navigation.replace('SalaEspera', {
+        asambleaId,
+        asistenciaId,
+        numeroCasa,
+      });
+    }, 1000);
+    
     return (
       <View style={styles.container}>
         <View style={styles.card}>
-          <Text style={styles.title}>No hay votaciones activas</Text>
-          <Text style={styles.subtitle}>
-            Por favor espere a que el administrador abra una nueva propuesta
-          </Text>
+          <Text style={styles.title}>Regresando a sala de espera...</Text>
+          <ActivityIndicator size="large" color="#2563eb" style={{ marginTop: 20 }} />
         </View>
       </View>
     );
