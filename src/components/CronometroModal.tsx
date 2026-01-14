@@ -321,6 +321,10 @@ const styles = StyleSheet.create({
     color: '#1e40af',
   },
   circleLabel: {
+    fontSize: 12,
+    color: '#64748b',
+    marginTop: 4,
+  },
   botonFinalizar: {
     backgroundColor: '#dc2626',
     paddingVertical: 14,
@@ -339,10 +343,6 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-    fontSize: 12,
-    color: '#64748b',
-    marginTop: 4,
   },
   infoContainer: {
     marginTop: 16,

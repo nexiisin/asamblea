@@ -1,6 +1,6 @@
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View, ScrollView, TouchableOpacity, RefreshControl } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View, ScrollView, TouchableOpacity, RefreshControl, Alert } from 'react-native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { supabase } from '../../services/supabase';
 import { Asamblea, Propuesta } from '../../types/database.types';
@@ -18,6 +18,7 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
   const [noVoto, setNoVoto] = useState<number>(0);
   const [noAsistio, setNoAsistio] = useState<number>(0);
   const [refrescando, setRefrescando] = useState(false);
+  const [asambleaCerradaHandled, setAsambleaCerradaHandled] = useState(false);
 
   // Obtener vivienda_id
   useEffect(() => {
@@ -129,17 +130,15 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
         },
         (payload) => {
           if (payload.eventType === 'UPDATE') {
-            const asamblea = payload.new as Asamblea;
-            console.log('🔔 [SALA ESPERA] Estado actualizado:', asamblea.estado_actual);
-            console.log('[SALA ESPERA] Cronómetro activo:', asamblea.cronometro_activo);
-            setEstadoActual(asamblea.estado_actual);
-            
+            const asam = payload.new as Asamblea;
+            console.log('🔔 [SALA ESPERA] Estado actualizado:', asam.estado_actual, 'estado:', asam.estado);
+            console.log('[SALA ESPERA] Cronómetro activo:', asam.cronometro_activo);
+            setEstadoActual(asam.estado_actual);
+
             // 🎯 NAVEGACIÓN AUTOMÁTICA SEGÚN ESTADO
-            switch(asamblea.estado_actual) {
+            switch(asam.estado_actual) {
               case 'DEBATE':
-                // El CronometroModal se mostrará automáticamente
                 break;
-              
               case 'VOTACION':
                 navigation.replace('Votacion', {
                   asambleaId,
@@ -148,15 +147,21 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
                   numeroCasa,
                 });
                 break;
-              
               case 'RESULTADOS':
-                // Cargar resultados de la última propuesta cerrada
                 cargarUltimaPropuestaCerrada();
                 break;
-              
               case 'ESPERA':
                 setPropuestaResultados(null);
                 break;
+            }
+
+            // Si la asamblea fue cerrada por el admin, expulsar al invitado y volver al inicio
+            if (asam.estado === 'CERRADA' && !asambleaCerradaHandled) {
+              setAsambleaCerradaHandled(true);
+              console.log('[SALA ESPERA] Asamblea cerrada por admin — expulsando usuario');
+              Alert.alert('Asamblea finalizada', 'La asamblea ha terminado. Volviendo al inicio.', [
+                { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }
+              ], { cancelable: false });
             }
           }
         }
@@ -194,6 +199,20 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
           });
         } else if (data.estado_actual === 'RESULTADOS') {
           cargarUltimaPropuestaCerrada();
+        }
+        
+        // Si la asamblea ya está marcada como cerrada, regresar al inicio inmediatamente
+        const { data: asamFull } = await supabase
+          .from('asambleas')
+          .select('estado')
+          .eq('id', asambleaId)
+          .single();
+
+        if (asamFull?.estado === 'CERRADA' && !asambleaCerradaHandled) {
+          setAsambleaCerradaHandled(true);
+          Alert.alert('Asamblea finalizada', 'La asamblea ha terminado. Volviendo al inicio.', [
+            { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }
+          ], { cancelable: false });
         }
       }
     };

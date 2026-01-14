@@ -8,6 +8,9 @@
     "ios": "expo start --ios",
     "web": "expo start --web"
   },
+  "expo": {
+    "plugins": []
+  },
   "dependencies": {
     "@react-navigation/bottom-tabs": "^7.8.12",
     "@react-navigation/native": "^7.1.25",
@@ -22,7 +25,9 @@
     "react-native-chart-kit": "^6.12.0",
     "react-native-safe-area-context": "^5.6.2",
     "react-native-screens": "~4.16.0",
-    "react-native-svg": "^15.12.1"
+    "react-native-svg": "^15.12.1",
+    "expo-print": "^12.0.0",
+    "expo-sharing": "^11.0.0"
   },
   "devDependencies": {
     "@types/react": "~19.1.0",

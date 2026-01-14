@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
 import { supabase } from '../../services/supabase';
+import { generarActaPDF } from '../../services/report';
 import { Asamblea, Propuesta } from '../../types/database.types';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ControlAsamblea'>;
@@ -14,6 +15,7 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
   const [propuestas, setPropuestas] = useState<Propuesta[]>([]);
   const [totalAsistentes, setTotalAsistentes] = useState(0);
   const [propuestaAbierta, setPropuestaAbierta] = useState<Propuesta | null>(null);
+  const [generandoPdf, setGenerandoPdf] = useState(false);
 
   const cargarDatos = async () => {
     // Cargar asamblea
@@ -230,6 +232,24 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
     }
   };
 
+  const handleDescargarActa = async () => {
+    try {
+      setGenerandoPdf(true);
+      Alert.alert('Generando PDF', 'Preparando el acta para descarga...');
+      const uri = await generarActaPDF(asambleaId);
+      if (uri) {
+        Alert.alert('Listo', 'PDF generado y compartido.');
+      } else {
+        Alert.alert('Error', 'No se pudo generar el PDF');
+      }
+    } catch (error) {
+      console.error('Error generando acta:', error);
+      Alert.alert('Error', 'Ocurrió un error al generar el PDF');
+    } finally {
+      setGenerandoPdf(false);
+    }
+  };
+
   if (!asamblea) {
     return <View style={styles.container}><Text>Cargando...</Text></View>;
   }
@@ -343,6 +363,14 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
           onPress={() => navigation.navigate('Historial')}
         >
           <Text style={styles.botonTexto}>📜 Historial</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.boton, styles.botonDescargar]}
+          onPress={handleDescargarActa}
+          disabled={generandoPdf}
+        >
+          <Text style={styles.botonTexto}>📥 Descargar Historial y Acta de Asamblea</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -538,6 +566,9 @@ const styles = StyleSheet.create({
   },
   botonHistorial: {
     backgroundColor: '#06b6d4',
+  },
+  botonDescargar: {
+    backgroundColor: '#0ea5a4',
   },
   botonCerrar: {
     backgroundColor: '#ef4444',
