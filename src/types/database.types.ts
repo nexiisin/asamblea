@@ -36,6 +36,7 @@ export interface Asamblea {
   fecha_fin: string | null;
   regla_aprobacion: number; // 0.51 por defecto
   created_at: string;
+  hora_cierre_ingreso?: string | null;
 }
 
 export interface Asistencia {

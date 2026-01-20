@@ -19,24 +19,38 @@ export default function AsistenciaQuorumScreen({ route, navigation }: Props) {
   
 
   const cargarDatos = async () => {
+    // 1. Datos de la asamblea
     const { data: asamblea } = await supabase
       .from('asambleas')
       .select('hora_cierre_ingreso, total_viviendas')
       .eq('id', asambleaId)
       .single();
 
-    const { count } = await supabase
-      .from('asistencias')
-      .select('*', { count: 'exact', head: true })
-      .eq('asamblea_id', asambleaId);
-
     if (asamblea) {
       setHoraCierre(new Date(asamblea.hora_cierre_ingreso));
       setTotalViviendas(asamblea.total_viviendas || 1);
     }
 
-    setAsistentes(count || 0);
+    // 2. Contar viviendas propias (TODOS)
+    const { count: propias } = await supabase
+      .from('asistencias')
+      .select('*', { count: 'exact', head: true })
+      .eq('asamblea_id', asambleaId);
+
+    // 3. Contar SOLO apoderados aprobados
+    const { count: apoderadosAprobados } = await supabase
+      .from('asistencias')
+      .select('*', { count: 'exact', head: true })
+      .eq('asamblea_id', asambleaId)
+      .eq('es_apoderado', true)
+      .eq('estado_apoderado', 'APROBADO')
+      .not('vivienda_representada_id', 'is', null);
+
+    const total = (propias || 0) + (apoderadosAprobados || 0);
+
+    setAsistentes(total);
   };
+
 
   useEffect(() => {
     cargarDatos();

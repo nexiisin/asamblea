@@ -11,6 +11,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'ControlAsamblea'>;
 export default function ControlAsambleaScreen({ navigation, route }: Props) {
   const { asambleaId } = route.params;
   
+  const [apoderadosPendientes, setApoderadosPendientes] = useState<any[]>([]);
   const [asamblea, setAsamblea] = useState<Asamblea | null>(null);
   const [propuestas, setPropuestas] = useState<Propuesta[]>([]);
   const [totalAsistentes, setTotalAsistentes] = useState(0);
@@ -43,45 +44,61 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
     }
 
     // Contar asistentes
-    const { count } = await supabase
+    const { data } = await supabase
       .from('asistencias')
-      .select('*', { count: 'exact', head: true })
+      .select('es_apoderado, estado_apoderado, vivienda_representada_id')
       .eq('asamblea_id', asambleaId);
 
-    setTotalAsistentes(count || 0);
+    let total = 0;
+
+    (data || []).forEach(a => {
+      // Siempre cuenta la vivienda propia
+      total += 1;
+
+      // Cuenta vivienda representada SOLO si está aprobado
+      if (
+        a.es_apoderado &&
+        a.estado_apoderado === 'APROBADO' &&
+        a.vivienda_representada_id
+      ) {
+        total += 1;
+      }
+    });
+
+    setTotalAsistentes(total);
+  };
+
+  const cargarApoderadosPendientes = async () => {
+    const { data, error } = await supabase
+      .from('asistencias')
+      .select('*')
+      .eq('asamblea_id', asambleaId)
+      .eq('es_apoderado', true)
+      .eq('estado_apoderado', 'PENDIENTE');
+
+    if (error) {
+      console.error('Error cargando apoderados:', error);
+      return;
+    }
+
+    setApoderadosPendientes(data || []);
+  };
+
+    const cargarTodo = async () => {
+    await Promise.all([
+      cargarDatos(),
+      cargarApoderadosPendientes(),
+    ]);
   };
 
   useEffect(() => {
-    cargarDatos();
+    cargarTodo();
 
-    // Suscripción a cambios
-    const channel = supabase
-      .channel('control-asamblea')
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'asistencias',
-          filter: `asamblea_id=eq.${asambleaId}`,
-        },
-        () => cargarDatos()
-      )
-      .on(
-        'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'propuestas',
-          filter: `asamblea_id=eq.${asambleaId}`,
-        },
-        () => cargarDatos()
-      )
-      .subscribe();
+    const interval = setInterval(() => {
+      cargarTodo();
+    }, 3000);
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    return () => clearInterval(interval);
   }, [asambleaId]);
 
   const handleRegenerarCodigo = async () => {
@@ -230,6 +247,26 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
       Alert.alert('Estado Reiniciado', 'La asamblea regresó a estado de espera');
       cargarDatos();
     }
+  };
+
+  const aprobarApoderado = async (asistenciaId: string) => {
+    await supabase
+      .from('asistencias')
+      .update({ estado_apoderado: 'APROBADO' })
+      .eq('id', asistenciaId);
+
+    cargarApoderadosPendientes();
+    cargarDatos();
+  };
+
+  const rechazarApoderado = async (asistenciaId: string) => {
+    await supabase
+      .from('asistencias')
+      .update({ estado_apoderado: 'RECHAZADO' })
+      .eq('id', asistenciaId);
+
+    cargarApoderadosPendientes();
+    cargarDatos();
   };
 
   const handleDescargarActa = async () => {
@@ -381,6 +418,51 @@ export default function ControlAsambleaScreen({ navigation, route }: Props) {
           <Text style={styles.botonTexto}>🔴 Cerrar Asamblea</Text>
         </TouchableOpacity>
       </View>
+
+      <View style={{ marginTop: 24 }}>
+        <Text style={{ fontSize: 18, fontWeight: 'bold', marginBottom: 12 }}>
+          Solicitudes de Apoderados
+        </Text>
+
+        {apoderadosPendientes.length === 0 ? (
+          <Text style={{ color: '#64748b' }}>
+            No hay solicitudes pendientes
+          </Text>
+        ) : (
+          apoderadosPendientes.map(ap => (
+            <View
+              key={ap.id}
+              style={{
+                backgroundColor: '#fff',
+                padding: 12,
+                borderRadius: 8,
+                marginBottom: 10,
+              }}
+            >
+            <Text>👤 {ap.nombre_asistente}</Text>
+            <Text>🏠 Casa propia ID: {ap.vivienda_id}</Text>
+            <Text>🏠 Representa ID: {ap.vivienda_representada_id}</Text>
+
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+                <TouchableOpacity
+                  style={{ backgroundColor: '#16a34a', padding: 8, borderRadius: 6 }}
+                  onPress={() => aprobarApoderado(ap.id)}
+                >
+                  <Text style={{ color: '#fff' }}>Aprobar</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  style={{ backgroundColor: '#dc2626', padding: 8, borderRadius: 6 }}
+                  onPress={() => rechazarApoderado(ap.id)}
+                >
+                  <Text style={{ color: '#fff' }}>Rechazar</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ))
+        )}
+      </View>
+
 
       {/* Lista de Propuestas */}
       <View style={styles.propuestasSection}>

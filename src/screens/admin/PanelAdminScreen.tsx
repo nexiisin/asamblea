@@ -37,6 +37,24 @@ export default function PanelAdminScreen({ navigation }: Props) {
     return codigo;
   };
 
+  const finalizarTiempoIngreso = async (asambleaId: string) => {
+  const ahora = new Date().toISOString();
+
+  const { error } = await supabase
+    .from('asambleas')
+    .update({ hora_cierre_ingreso: ahora })
+    .eq('id', asambleaId);
+
+  if (error) {
+    Alert.alert('Error', 'No se pudo finalizar el tiempo de asistencia');
+    return;
+  }
+
+    Alert.alert('Tiempo de asistencia finalizado');
+    cargarAsambleas();
+  };
+
+
   const handleIniciarAsamblea = async () => {
     setLoading(true);
 
@@ -58,7 +76,7 @@ export default function PanelAdminScreen({ navigation }: Props) {
           regla_aprobacion: 0.51,
           fecha_inicio: ahora.toISOString(),
           hora_cierre_ingreso: horaCierreIngreso.toISOString(),
-          total_viviendas: 100, // AJUSTA ESTO A TU CONJUNTO
+          total_viviendas: 15, // ajustable, depende de la cantidad de casas
         })
         .select()
         .single();
@@ -90,17 +108,31 @@ export default function PanelAdminScreen({ navigation }: Props) {
     }
   };
 
-  const renderAsamblea = ({ item }: { item: Asamblea }) => (
+  const renderAsamblea = ({ item }: { item: Asamblea }) => {
+  const ahora = new Date();
+  const enIngreso =
+    item.hora_cierre_ingreso &&
+    new Date(item.hora_cierre_ingreso) > ahora;
+
+  return (
     <TouchableOpacity
       style={styles.asambleaCard}
       onPress={() => navigation.navigate('ControlAsamblea', { asambleaId: item.id })}
     >
       <View style={styles.asambleaHeader}>
         <Text style={styles.asambleaCodigo}>{item.codigo_acceso}</Text>
-        <View style={[styles.badge, item.estado === 'ABIERTA' ? styles.badgeAbierta : styles.badgeCerrada]}>
-          <Text style={styles.badgeText}>{item.estado}</Text>
+        <View
+          style={[
+            styles.badge,
+            enIngreso ? styles.badgeIngreso : styles.badgeAbierta,
+          ]}
+        >
+          <Text style={styles.badgeText}>
+            {enIngreso ? 'INGRESO' : item.estado}
+          </Text>
         </View>
       </View>
+
       <Text style={styles.asambleaFecha}>
         {new Date(item.fecha_inicio).toLocaleDateString('es-ES', {
           year: 'numeric',
@@ -110,8 +142,26 @@ export default function PanelAdminScreen({ navigation }: Props) {
           minute: '2-digit',
         })}
       </Text>
+
+      {enIngreso && (
+        <TouchableOpacity
+          style={{
+            marginTop: 10,
+            backgroundColor: '#dc2626',
+            padding: 10,
+            borderRadius: 8,
+            alignItems: 'center',
+          }}
+          onPress={() => finalizarTiempoIngreso(item.id)}
+        >
+          <Text style={{ color: '#fff', fontWeight: '600' }}>
+            Finalizar tiempo de asistencia
+          </Text>
+        </TouchableOpacity>
+      )}
     </TouchableOpacity>
   );
+};
 
   return (
 

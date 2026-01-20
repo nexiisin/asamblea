@@ -14,6 +14,8 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
   const [primerNombre, setPrimerNombre] = useState('');
   const [primerApellido, setPrimerApellido] = useState('');
   const [nombreAsistente, setNombreAsistente] = useState('');
+  const [esApoderado, setEsApoderado] = useState(false);
+  const [numeroCasaRepresentada, setNumeroCasaRepresentada] = useState('');
   const [loading, setLoading] = useState(false);
   const [mostrarModal, setMostrarModal] = useState(false);
   const [asistenciaCreada, setAsistenciaCreada] = useState<any>(null);
@@ -30,6 +32,7 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
 
     try {
       // 1. Buscar la vivienda
+      let viviendaRepresentadaId: string | null = null;
       const { data: vivienda, error: errorVivienda } = await supabase
         .from('viviendas')
         .select('id')
@@ -55,6 +58,46 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
         Alert.alert('Error', 'Los datos del propietario no coinciden');
         setLoading(false);
         return;
+      }
+
+      if (esApoderado) {
+        if (!numeroCasaRepresentada.trim()) {
+          Alert.alert('Error', 'Debe ingresar la casa que representa');
+          setLoading(false);
+          return;
+        }
+
+        const { data: viviendaRep } = await supabase
+          .from('viviendas')
+          .select('id')
+          .eq('numero_casa', numeroCasaRepresentada.trim())
+          .single();
+
+        if (!viviendaRep) {
+          Alert.alert('Error', 'La vivienda que representa no existe');
+          setLoading(false);
+          return;
+        }
+
+        viviendaRepresentadaId = viviendaRep.id;
+
+        // VALIDACIÓN OPTION 2 (no duplicar apoderado)
+        const { data: apoderadoExistente } = await supabase
+          .from('asistencias')
+          .select('id')
+          .eq('asamblea_id', asambleaId)
+          .eq('vivienda_representada_id', viviendaRepresentadaId)
+          .in('estado_apoderado', ['PENDIENTE', 'APROBADO'])
+          .maybeSingle();
+
+        if (apoderadoExistente) {
+          Alert.alert(
+            'No permitido',
+            'Esta vivienda ya tiene un apoderado asignado'
+          );
+          setLoading(false);
+          return;
+        }
       }
 
       // 3. Verificar que no esté ya registrado
@@ -92,6 +135,12 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
         return;
       }
 
+      console.log('REGISTRO ASISTENCIA →', {
+        esApoderado,
+        viviendaRepresentadaId,
+        estado_apoderado: esApoderado === true ? 'PENDIENTE' : 'APROBADO',
+      });
+
       // 4. Crear asistencia
     const { data: nuevaAsistencia, error: errorAsistencia } = await supabase
       .from('asistencias')
@@ -99,6 +148,9 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
         asamblea_id: asambleaId,
         vivienda_id: vivienda.id,
         nombre_asistente: nombreAsistente.trim(),
+        es_apoderado: esApoderado === true,
+        vivienda_representada_id: viviendaRepresentadaId,
+        estado_apoderado: esApoderado === true ? 'PENDIENTE' : 'APROBADO',
       })
       .select()
       .single();
@@ -112,6 +164,13 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
     setAsistenciaCreada(nuevaAsistencia);
     setMostrarModal(true);
     setLoading(false);  
+    if (esApoderado) {
+      Alert.alert(
+        'Registro enviado',
+        'Tu solicitud como apoderado quedó pendiente de aprobación del administrador'
+      );
+    }
+
     return;      
 
     } catch (error) {
@@ -120,9 +179,7 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
       setLoading(false);
     }
   };
-
   
-
     return (
     <>
       <ScrollView style={styles.container}>
@@ -166,6 +223,36 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
               onChangeText={setNombreAsistente}
               editable={!loading}
             />
+
+            <TouchableOpacity
+              style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}
+              onPress={() => setEsApoderado(!esApoderado)}
+            >
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderWidth: 2,
+                  borderColor: '#2563eb',
+                  marginRight: 8,
+                  backgroundColor: esApoderado ? '#2563eb' : 'transparent',
+                }}
+              />
+              <Text>Soy apoderado de otra vivienda</Text>
+            </TouchableOpacity>
+
+            {esApoderado && (
+              <>
+                <Text style={styles.label}>Número de Casa que Representa *</Text>
+                <TextInput
+                  style={styles.input}
+                  placeholder="Ej: 205"
+                  value={numeroCasaRepresentada}
+                  onChangeText={setNumeroCasaRepresentada}
+                  editable={!loading}
+                />
+              </>
+            )}
 
             <TouchableOpacity
               style={[styles.button, loading && styles.buttonDisabled]}
