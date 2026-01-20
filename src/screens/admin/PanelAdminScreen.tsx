@@ -10,6 +10,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'PanelAdmin'>;
 export default function PanelAdminScreen({ navigation }: Props) {
   const [asambleas, setAsambleas] = useState<Asamblea[]>([]);
   const [loading, setLoading] = useState(false);
+  const [duracionIngreso, setDuracionIngreso] = useState(60);
 
   const cargarAsambleas = async () => {
     const { data } = await supabase
@@ -42,12 +43,22 @@ export default function PanelAdminScreen({ navigation }: Props) {
     try {
       const codigo = generarCodigoAcceso();
 
+      const ahora = new Date();
+      const duracionIngresoMinutos = duracionIngreso;
+
+      const horaCierreIngreso = new Date(
+        ahora.getTime() + duracionIngresoMinutos * 60000
+      );
+
       const { data: nuevaAsamblea, error } = await supabase
         .from('asambleas')
         .insert({
           codigo_acceso: codigo,
           estado: 'ABIERTA',
           regla_aprobacion: 0.51,
+          fecha_inicio: ahora.toISOString(),
+          hora_cierre_ingreso: horaCierreIngreso.toISOString(),
+          total_viviendas: 100, // AJUSTA ESTO A TU CONJUNTO
         })
         .select()
         .single();
@@ -103,10 +114,36 @@ export default function PanelAdminScreen({ navigation }: Props) {
   );
 
   return (
+
+    
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Panel Administrativo</Text>
         <Text style={styles.headerSubtitle}>Gestión de Asambleas</Text>
+      </View>
+
+      <View style={{ padding: 20 }}>
+        <Text style={{ fontSize: 16, fontWeight: '600', marginBottom: 8 }}>
+          Tiempo de asistencia (minutos)
+        </Text>
+
+        <View style={{ flexDirection: 'row', gap: 10 }}>
+          {[30, 60, 90].map(min => (
+            <TouchableOpacity
+              key={min}
+              style={{
+                padding: 10,
+                borderRadius: 8,
+                backgroundColor: duracionIngreso === min ? '#10b981' : '#e5e7eb',
+              }}
+              onPress={() => setDuracionIngreso(min)}
+            >
+              <Text style={{ color: duracionIngreso === min ? '#fff' : '#000' }}>
+                {min}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
       </View>
 
       <View style={styles.buttonsContainer}>
@@ -258,5 +295,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#94a3b8',
     fontStyle: 'italic',
+  },
+  badgeIngreso: {
+    backgroundColor: '#fef3c7',
   },
 });

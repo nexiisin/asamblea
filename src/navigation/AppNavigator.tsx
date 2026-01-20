@@ -10,6 +10,8 @@ import IngresoCodigoScreen from '../screens/invitado/IngresoCodigoScreen';
 import RegistroInvitadoScreen from '../screens/invitado/RegistroInvitadoScreen';
 import SalaEsperaScreen from '../screens/invitado/SalaEsperaScreen';
 import VotacionScreen from '../screens/invitado/VotacionScreen';
+import AsistenciaQuorumScreen from '../screens/invitado/AsistenciaQuorumScreen';
+
 
 // Pantallas de Admin
 import PanelAdminScreen from '../screens/admin/PanelAdminScreen';
@@ -29,6 +31,7 @@ export type RootStackParamList = {
   RegistroInvitado: { asambleaId: string; codigoAcceso: string };
   SalaEspera: { asambleaId: string; asistenciaId: string; numeroCasa: string };
   Votacion: { asambleaId: string; asistenciaId: string; viviendaId: string; numeroCasa: string };
+  AsistenciaQuorum: { asambleaId: string; asistenciaId: string; numeroCasa: string; };
   
   // Admin
   PanelAdmin: undefined;
@@ -63,7 +66,7 @@ export default function AppNavigator() {
           component={HomeScreen} 
           options={{ title: 'Asamblea Digital' }}
         />
-        
+      
         {/* Invitado */}
         <Stack.Screen 
           name="IngresoCodigo" 
@@ -74,6 +77,11 @@ export default function AppNavigator() {
           name="RegistroInvitado" 
           component={RegistroInvitadoScreen} 
           options={{ title: 'Registro' }}
+        />
+        <Stack.Screen 
+          name="AsistenciaQuorum" 
+          component={AsistenciaQuorumScreen} 
+          options={{ title: 'Asistencia y Quórum' }}
         />
         <Stack.Screen 
           name="SalaEspera" 

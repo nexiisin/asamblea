@@ -219,7 +219,29 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
 
     checkEstadoInicial();
 
+    // Polling adicional para asegurar detección de cierre si el evento realtime falla
+    const pollInterval = setInterval(async () => {
+      try {
+        if (asambleaCerradaHandled) return;
+        const { data: asam } = await supabase
+          .from('asambleas')
+          .select('estado')
+          .eq('id', asambleaId)
+          .maybeSingle();
+
+        if (asam?.estado === 'CERRADA' && !asambleaCerradaHandled) {
+          setAsambleaCerradaHandled(true);
+          Alert.alert('Asamblea finalizada', 'La asamblea ha terminado. Volviendo al inicio.', [
+            { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }
+          ], { cancelable: false });
+        }
+      } catch (err) {
+        console.error('[SALA ESPERA] Polling error:', err);
+      }
+    }, 5000);
+
     return () => {
+      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [asambleaId, asistenciaId, viviendaId, numeroCasa, navigation]);

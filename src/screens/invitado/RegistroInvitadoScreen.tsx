@@ -2,6 +2,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import React, { useState } from 'react';
 import { Alert, StyleSheet, Text, TextInput, TouchableOpacity, View, ScrollView } from 'react-native';
 import { RootStackParamList } from '../../navigation/AppNavigator';
+import ModalAdvertenciaAsamblea from '../../components/ModalAdvertenciaAsamblea';
 import { supabase } from '../../services/supabase';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'RegistroInvitado'>;
@@ -14,6 +15,9 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
   const [primerApellido, setPrimerApellido] = useState('');
   const [nombreAsistente, setNombreAsistente] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mostrarModal, setMostrarModal] = useState(false);
+  const [asistenciaCreada, setAsistenciaCreada] = useState<any>(null);
+
 
   const handleRegistro = async () => {
     // Validar campos
@@ -67,29 +71,49 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
         return;
       }
 
-      // 4. Crear asistencia
-      const { data: nuevaAsistencia, error: errorAsistencia } = await supabase
-        .from('asistencias')
-        .insert({
-          asamblea_id: asambleaId,
-          vivienda_id: vivienda.id,
-          nombre_asistente: nombreAsistente.trim(),
-        })
-        .select()
+      const { data: asamblea, error: errorAsamblea } = await supabase
+        .from('asambleas')
+        .select('hora_cierre_ingreso')
+        .eq('id', asambleaId)
         .single();
 
-      if (errorAsistencia || !nuevaAsistencia) {
-        Alert.alert('Error', 'No se pudo completar el registro');
+      if (errorAsamblea || !asamblea?.hora_cierre_ingreso) {
+        Alert.alert('Error', 'No se pudo validar el estado de la asamblea');
         setLoading(false);
         return;
       }
 
-      // 5. Navegar a sala de espera
-      navigation.replace('SalaEspera', {
-        asambleaId,
-        asistenciaId: nuevaAsistencia.id,
-        numeroCasa: numeroCasa.trim(),
-      });
+      if (new Date() > new Date(asamblea.hora_cierre_ingreso)) {
+        Alert.alert(
+          'Ingreso cerrado',
+          'El tiempo de ingreso a la asamblea ha finalizado'
+        );
+        setLoading(false);
+        return;
+      }
+
+      // 4. Crear asistencia
+    const { data: nuevaAsistencia, error: errorAsistencia } = await supabase
+      .from('asistencias')
+      .insert({
+        asamblea_id: asambleaId,
+        vivienda_id: vivienda.id,
+        nombre_asistente: nombreAsistente.trim(),
+      })
+      .select()
+      .single();
+
+    if (errorAsistencia || !nuevaAsistencia) {
+      Alert.alert('Error', 'No se pudo completar el registro');
+      setLoading(false);
+      return;
+    }
+
+    setAsistenciaCreada(nuevaAsistencia);
+    setMostrarModal(true);
+    setLoading(false);  
+    return;      
+
     } catch (error) {
       console.error('Error en registro:', error);
       Alert.alert('Error', 'Ocurrió un error durante el registro');
@@ -97,61 +121,79 @@ export default function RegistroInvitadoScreen({ navigation, route }: Props) {
     }
   };
 
-  return (
-    <ScrollView style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>Registro de Asistente</Text>
-        <Text style={styles.subtitle}>Código: {codigoAcceso}</Text>
+  
 
-        <View style={styles.form}>
-          <Text style={styles.label}>Número de Casa *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ej: 101"
-            value={numeroCasa}
-            onChangeText={setNumeroCasa}
-            editable={!loading}
-          />
+    return (
+    <>
+      <ScrollView style={styles.container}>
+        <View style={styles.card}>
+          <Text style={styles.title}>Registro de Asistente</Text>
+          <Text style={styles.subtitle}>Código: {codigoAcceso}</Text>
 
-          <Text style={styles.label}>Primer Nombre del Propietario *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ej: Juan"
-            value={primerNombre}
-            onChangeText={setPrimerNombre}
-            editable={!loading}
-          />
+          <View style={styles.form}>
+            <Text style={styles.label}>Número de Casa *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej: 101"
+              value={numeroCasa}
+              onChangeText={setNumeroCasa}
+              editable={!loading}
+            />
 
-          <Text style={styles.label}>Primer Apellido del Propietario *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ej: Pérez"
-            value={primerApellido}
-            onChangeText={setPrimerApellido}
-            editable={!loading}
-          />
+            <Text style={styles.label}>Primer Nombre del Propietario *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej: Juan"
+              value={primerNombre}
+              onChangeText={setPrimerNombre}
+              editable={!loading}
+            />
 
-          <Text style={styles.label}>Nombre del Asistente *</Text>
-          <TextInput
-            style={styles.input}
-            placeholder="Ej: María Pérez"
-            value={nombreAsistente}
-            onChangeText={setNombreAsistente}
-            editable={!loading}
-          />
+            <Text style={styles.label}>Primer Apellido del Propietario *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej: Pérez"
+              value={primerApellido}
+              onChangeText={setPrimerApellido}
+              editable={!loading}
+            />
 
-          <TouchableOpacity
-            style={[styles.button, loading && styles.buttonDisabled]}
-            onPress={handleRegistro}
-            disabled={loading}
-          >
-            <Text style={styles.buttonText}>
-              {loading ? 'Registrando...' : 'Confirmar Registro'}
-            </Text>
-          </TouchableOpacity>
+            <Text style={styles.label}>Nombre del Asistente *</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Ej: María Pérez"
+              value={nombreAsistente}
+              onChangeText={setNombreAsistente}
+              editable={!loading}
+            />
+
+            <TouchableOpacity
+              style={[styles.button, loading && styles.buttonDisabled]}
+              onPress={handleRegistro}
+              disabled={loading}
+            >
+              <Text style={styles.buttonText}>
+                {loading ? 'Registrando...' : 'Confirmar Registro'}
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
-    </ScrollView>
+      </ScrollView>
+
+      {/* ✅ EL MODAL SIEMPRE DEBE IR AQUÍ */}
+      <ModalAdvertenciaAsamblea
+        visible={mostrarModal}
+        onAceptar={() => {
+          setMostrarModal(false);
+
+          navigation.replace('AsistenciaQuorum', {
+            asambleaId,
+            asistenciaId: asistenciaCreada.id,
+            numeroCasa: numeroCasa.trim(),
+          });
+        }}
+      />
+    </>
   );
 }
 
