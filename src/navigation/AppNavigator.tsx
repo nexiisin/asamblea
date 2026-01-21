@@ -11,6 +11,7 @@ import RegistroInvitadoScreen from '../screens/invitado/RegistroInvitadoScreen';
 import SalaEsperaScreen from '../screens/invitado/SalaEsperaScreen';
 import VotacionScreen from '../screens/invitado/VotacionScreen';
 import AsistenciaQuorumScreen from '../screens/invitado/AsistenciaQuorumScreen';
+import FormularioCierreScreen from '../screens/invitado/FormularioCierreScreen';
 
 
 // Pantallas de Admin
@@ -32,6 +33,7 @@ export type RootStackParamList = {
   SalaEspera: { asambleaId: string; asistenciaId: string; numeroCasa: string };
   Votacion: { asambleaId: string; asistenciaId: string; viviendaId: string; numeroCasa: string };
   AsistenciaQuorum: { asambleaId: string; asistenciaId: string; numeroCasa: string; };
+  FormularioCierre: { asistenciaId: string; asambleaId: string };
   
   // Admin
   PanelAdmin: undefined;
@@ -93,7 +95,13 @@ export default function AppNavigator() {
           component={VotacionScreen} 
           options={{ title: 'Votación' }}
         />
-        
+        <Stack.Screen
+          name="FormularioCierre"
+          component={FormularioCierreScreen}
+          options={{ title: 'Formulario de Cierre' }}
+        />
+
+
         {/* Admin */}
         <Stack.Screen 
           name="PanelAdmin" 

@@ -37,6 +37,38 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
     fetchViviendaId();
   }, [asistenciaId]);
 
+    const verificarCierre = async () => {
+    const { data: asamblea } = await supabase
+      .from('asambleas')
+      .select('estado')
+      .eq('id', asambleaId)
+      .single();
+
+    const { data: asistencia } = await supabase
+      .from('asistencias')
+      .select('formulario_cierre_completado')
+      .eq('id', asistenciaId)
+      .single();
+
+    if (
+      asamblea?.estado === 'CERRADA' &&
+      asistencia &&
+      !asistencia.formulario_cierre_completado
+    ) {
+      navigation.replace('FormularioCierre', {
+        asistenciaId,
+        asambleaId,
+      });
+    }
+  };
+
+  useEffect(() => {
+  verificarCierre();
+  const i = setInterval(verificarCierre, 3000);
+  return () => clearInterval(i);
+}, []);
+
+
   // Cargar última propuesta cerrada para mostrar resultados
   const cargarUltimaPropuestaCerrada = async () => {
     try {
@@ -154,15 +186,14 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
                 setPropuestaResultados(null);
                 break;
             }
-
-            // Si la asamblea fue cerrada por el admin, expulsar al invitado y volver al inicio
-            if (asam.estado === 'CERRADA' && !asambleaCerradaHandled) {
-              setAsambleaCerradaHandled(true);
-              console.log('[SALA ESPERA] Asamblea cerrada por admin — expulsando usuario');
-              Alert.alert('Asamblea finalizada', 'La asamblea ha terminado. Volviendo al inicio.', [
-                { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }
-              ], { cancelable: false });
-            }
+            // 🔁 SI LA ASAMBLEA SE CIERRA, VOLVER A ASISTENCIA QUORUM
+    if (asam.estado === 'CERRADA') {
+      navigation.replace('AsistenciaQuorum', {
+        asambleaId,
+        asistenciaId,
+        numeroCasa,
+      });
+    }
           }
         }
       )
@@ -207,41 +238,13 @@ export default function SalaEsperaScreen({ navigation, route }: Props) {
           .select('estado')
           .eq('id', asambleaId)
           .single();
-
-        if (asamFull?.estado === 'CERRADA' && !asambleaCerradaHandled) {
-          setAsambleaCerradaHandled(true);
-          Alert.alert('Asamblea finalizada', 'La asamblea ha terminado. Volviendo al inicio.', [
-            { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }
-          ], { cancelable: false });
-        }
       }
     };
 
     checkEstadoInicial();
 
-    // Polling adicional para asegurar detección de cierre si el evento realtime falla
-    const pollInterval = setInterval(async () => {
-      try {
-        if (asambleaCerradaHandled) return;
-        const { data: asam } = await supabase
-          .from('asambleas')
-          .select('estado')
-          .eq('id', asambleaId)
-          .maybeSingle();
-
-        if (asam?.estado === 'CERRADA' && !asambleaCerradaHandled) {
-          setAsambleaCerradaHandled(true);
-          Alert.alert('Asamblea finalizada', 'La asamblea ha terminado. Volviendo al inicio.', [
-            { text: 'OK', onPress: () => navigation.reset({ index: 0, routes: [{ name: 'Home' }] }) }
-          ], { cancelable: false });
-        }
-      } catch (err) {
-        console.error('[SALA ESPERA] Polling error:', err);
-      }
-    }, 5000);
 
     return () => {
-      clearInterval(pollInterval);
       supabase.removeChannel(channel);
     };
   }, [asambleaId, asistenciaId, viviendaId, numeroCasa, navigation]);
